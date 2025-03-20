@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}NBA Sentiment Predictor - Today's Games{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h2 class="m-0">Today's Games - {{ current_date }}</h2>
+            </div>
+            <div class="card-body">
+                {% if games %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Game Time</th>
+                                    <th>Away Team</th>
+                                    <th>Home Team</th>
+                                    <th>Prediction</th>
+                                    <th>Win Probability</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for game in games %}
+                                <tr>
+                                    <td>{{ game.game_time }}</td>
+                                    <td>
+                                        <a href="{{ url_for('team_detail', team_name=game.away_team) }}" class="team-link">
+                                            <span class="team-dot me-2" style="background-color: {{ game.away_team|team_color }};"></span>
+                                            {{ game.away_team }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('team_detail', team_name=game.home_team) }}" class="team-link">
+                                            <span class="team-dot me-2" style="background-color: {{ game.home_team|team_color }};"></span>
+                                            {{ game.home_team }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        {% if game.prediction_available %}
+                                            {% if game.win_probability > 0.5 %}
+                                                {{ game.home_team }} win
+                                            {% else %}
+                                                {{ game.away_team }} win
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="text-muted">No prediction yet</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if game.prediction_available %}
+                                            <div class="progress" style="height: 25px;">
+                                                <div class="progress-bar" role="progressbar" 
+                                                    style="width: {{ game.win_probability * 100 }}%; background-color: {{ game.home_team|team_color }};" 
+                                                    aria-valuenow="{{ game.win_probability * 100 }}" 
+                                                    aria-valuemin="0" 
+                                                    aria-valuemax="100">
+                                                    {{ game.win_probability|format_percent }}
+                                                </div>
+                                            </div>
+                                        {% else %}
+                                            <div class="progress" style="height: 25px;">
+                                                <div class="progress-bar bg-secondary" role="progressbar" 
+                                                    style="width: 50%;" 
+                                                    aria-valuenow="50" 
+                                                    aria-valuemin="0" 
+                                                    aria-valuemax="100">
+                                                    50.0%
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('game_detail', game_id=game.game_id) }}" class="btn btn-sm btn-primary">View Details</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <p>No games scheduled for today.</p>
+                        <p>Use the Refresh Data button to check for updates.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h3 class="m-0">How it Works</h3>
+            </div>
+            <div class="card-body">
+                <p>The <strong>NBA Sentiment Predictor</strong> uses natural language processing to analyze fan sentiment on Reddit and predict game outcomes.</p>
+                
+                <h4>Our Prediction Process:</h4>
+                <ol>
+                    <li>Scrape upcoming NBA games from reliable sources</li>
+                    <li>Collect team-related content from NBA subreddits</li>
+                    <li>Analyze sentiment to gauge fan positivity/negativity</li>
+                    <li>Factor in player availability from injury reports</li>
+                    <li>Calculate win probabilities based on combined factors</li>
+                </ol>
+                
+                <p class="alert alert-warning">
+                    <strong>Note:</strong> These predictions are experimental and for entertainment purposes only. 
+                    Don't use them for betting or other financial decisions.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h3 class="m-0">Update Data</h3>
+            </div>
+            <div class="card-body">
+                <p>You can update specific data components:</p>
+                <form action="{{ url_for('refresh_data') }}" method="post" class="mb-3">
+                    <div class="list-group mb-3">
+                        <button type="submit" name="action" value="games" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1">Update Games</h5>
+                                <small>1-2 min</small>
+                            </div>
+                            <p class="mb-1">Fetch the latest NBA game schedule</p>
+                        </button>
+                        <button type="submit" name="action" value="players" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1">Update Players</h5>
+                                <small>1-2 min</small>
+                            </div>
+                            <p class="mb-1">Get the latest player injury reports</p>
+                        </button>
+                        <button type="submit" name="action" value="reddit" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1">Update Reddit Data</h5>
+                                <small>3-5 min</small>
+                            </div>
+                            <p class="mb-1">Collect fresh Reddit content for teams playing today</p>
+                        </button>
+                        <button type="submit" name="action" value="sentiment" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1">Update Sentiment Analysis</h5>
+                                <small>2-3 min</small>
+                            </div>
+                            <p class="mb-1">Analyze sentiment in collected Reddit content</p>
+                        </button>
+                        <button type="submit" name="action" value="predictions" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1">Update Predictions</h5>
+                                <small>~1 min</small>
+                            </div>
+                            <p class="mb-1">Generate fresh predictions for today's games</p>
+                        </button>
+                    </div>
+                    <button type="submit" name="action" value="all" class="btn btn-primary w-100">Update Everything</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h3 class="m-0">Prediction Accuracy</h3>
+            </div>
+            <div class="card-body">
+                <p>Our prediction system is still in development. We'll track accuracy over time as games are played.</p>
+                <canvas id="accuracyChart" width="400" height="270"></canvas>
+                <p class="text-center text-muted mt-2">Prediction accuracy by confidence level</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Sample data for accuracy chart (replace with real data later)
+    const ctx = document.getElementById('accuracyChart').getContext('2d');
+    const accuracyChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['50-55%', '55-60%', '60-65%', '65-70%', '70-75%', '>75%'],
+            datasets: [{
+                label: 'Prediction Accuracy',
+                data: [52, 56, 63, 68, 72, 78],
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.6)',
+                    'rgba(54, 162, 235, 0.6)',
+                    'rgba(54, 162, 235, 0.6)',
+                    'rgba(54, 162, 235, 0.6)',
+                    'rgba(54, 162, 235, 0.6)',
+                    'rgba(54, 162, 235, 0.6)'
+                ],
+                borderColor: [
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(54, 162, 235, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Accuracy (%)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Confidence Level'
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

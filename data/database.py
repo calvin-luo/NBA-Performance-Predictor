@@ -3,6 +3,7 @@ import sqlite3
 import datetime
 from typing import Dict, List, Tuple, Optional, Any, Union
 import logging
+from contextlib import contextmanager
 
 # Set up logging
 logging.basicConfig(
@@ -25,11 +26,38 @@ class Database:
             db_path: Path to the SQLite database file
         """
         # Ensure the data directory exists
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+        db_dir = os.path.dirname(os.path.abspath(db_path))
+        os.makedirs(db_dir, exist_ok=True)
         self.db_path = db_path
         self.conn = None
         self.cursor = None
         
+    @contextmanager
+    def get_connection(self):
+        """
+        Context manager for database connections.
+        Ensures connections are properly closed even if exceptions occur.
+        
+        Yields:
+            sqlite3.Connection: Database connection
+        """
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path)
+            # Enable foreign key constraints
+            conn.execute("PRAGMA foreign_keys = ON")
+            # Return rows as dictionaries
+            conn.row_factory = sqlite3.Row
+            yield conn
+        except sqlite3.Error as e:
+            logger.error(f"Database connection error: {e}")
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
     def connect(self) -> None:
         """Establish a connection to the SQLite database."""
         try:
@@ -54,11 +82,11 @@ class Database:
     
     def initialize_database(self) -> None:
         """Create all tables if they don't exist."""
-        try:
-            self.connect()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             
             # Create Games table
-            self.cursor.execute('''
+            cursor.execute('''
             CREATE TABLE IF NOT EXISTS games (
                 game_id TEXT PRIMARY KEY,
                 home_team TEXT NOT NULL,
@@ -74,7 +102,7 @@ class Database:
             ''')
             
             # Create Players table
-            self.cursor.execute('''
+            cursor.execute('''
             CREATE TABLE IF NOT EXISTS players (
                 player_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -87,7 +115,7 @@ class Database:
             ''')
             
             # Create Reddit Posts table
-            self.cursor.execute('''
+            cursor.execute('''
             CREATE TABLE IF NOT EXISTS reddit_posts (
                 post_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 reddit_id TEXT UNIQUE NOT NULL,
@@ -106,7 +134,7 @@ class Database:
             ''')
             
             # Create Comments table
-            self.cursor.execute('''
+            cursor.execute('''
             CREATE TABLE IF NOT EXISTS reddit_comments (
                 comment_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 reddit_id TEXT UNIQUE NOT NULL,
@@ -121,7 +149,7 @@ class Database:
             ''')
             
             # Create Sentiment Analysis table
-            self.cursor.execute('''
+            cursor.execute('''
             CREATE TABLE IF NOT EXISTS sentiment_analysis (
                 sentiment_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 entity_type TEXT NOT NULL,
@@ -138,7 +166,7 @@ class Database:
             ''')
             
             # Create Predictions table
-            self.cursor.execute('''
+            cursor.execute('''
             CREATE TABLE IF NOT EXISTS predictions (
                 prediction_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 game_id TEXT NOT NULL,
@@ -151,13 +179,8 @@ class Database:
             )
             ''')
             
-            self.conn.commit()
+            conn.commit()
             logger.info("Database tables initialized successfully")
-        except sqlite3.Error as e:
-            logger.error(f"Database initialization error: {e}")
-            raise
-        finally:
-            self.disconnect()
     
     # Games table operations
     def insert_game(self, game_data: Dict[str, Any]) -> str:
@@ -170,19 +193,20 @@ class Database:
         Returns:
             game_id: The ID of the inserted game
         """
-        try:
-            now = datetime.datetime.now().isoformat()
-            self.connect()
-            
-            # Ensure required fields are present
-            required_fields = ['game_id', 'home_team', 'away_team', 'game_date', 'game_time']
-            for field in required_fields:
-                if field not in game_data:
-                    raise ValueError(f"Missing required field: {field}")
-            
-            # Add timestamps
-            game_data['created_at'] = now
-            game_data['updated_at'] = now
+        now = datetime.datetime.now().isoformat()
+        
+        # Ensure required fields are present
+        required_fields = ['game_id', 'home_team', 'away_team', 'game_date', 'game_time']
+        for field in required_fields:
+            if field not in game_data:
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Add timestamps
+        game_data['created_at'] = now
+        game_data['updated_at'] = now
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             
             # Insert game
             placeholders = ', '.join(['?'] * len(game_data))
@@ -190,17 +214,11 @@ class Database:
             values = list(game_data.values())
             
             query = f"INSERT INTO games ({columns}) VALUES ({placeholders})"
-            self.cursor.execute(query, values)
-            self.conn.commit()
+            cursor.execute(query, values)
+            conn.commit()
             
             logger.info(f"Inserted game: {game_data['game_id']}")
             return game_data['game_id']
-        except (sqlite3.Error, ValueError) as e:
-            logger.error(f"Error inserting game: {e}")
-            self.conn.rollback()
-            raise
-        finally:
-            self.disconnect()
     
     def update_game(self, game_id: str, update_data: Dict[str, Any]) -> bool:
         """
@@ -213,12 +231,13 @@ class Database:
         Returns:
             bool: True if successful, False otherwise
         """
-        try:
-            now = datetime.datetime.now().isoformat()
-            self.connect()
-            
-            # Add updated timestamp
-            update_data['updated_at'] = now
+        now = datetime.datetime.now().isoformat()
+        
+        # Add updated timestamp
+        update_data['updated_at'] = now
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             
             # Build the SET clause for the UPDATE statement
             set_clause = ', '.join([f"{key} = ?" for key in update_data.keys()])
@@ -226,21 +245,15 @@ class Database:
             values.append(game_id)  # For the WHERE clause
             
             query = f"UPDATE games SET {set_clause} WHERE game_id = ?"
-            self.cursor.execute(query, values)
-            self.conn.commit()
+            cursor.execute(query, values)
+            conn.commit()
             
-            if self.cursor.rowcount > 0:
+            if cursor.rowcount > 0:
                 logger.info(f"Updated game: {game_id}")
                 return True
             else:
                 logger.warning(f"No game found with ID: {game_id}")
                 return False
-        except sqlite3.Error as e:
-            logger.error(f"Error updating game: {e}")
-            self.conn.rollback()
-            return False
-        finally:
-            self.disconnect()
     
     def get_game(self, game_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -252,21 +265,16 @@ class Database:
         Returns:
             Dict containing game data or None if not found
         """
-        try:
-            self.connect()
-            self.cursor.execute("SELECT * FROM games WHERE game_id = ?", (game_id,))
-            row = self.cursor.fetchone()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM games WHERE game_id = ?", (game_id,))
+            row = cursor.fetchone()
             
             if row:
                 return dict(row)
             else:
                 logger.warning(f"No game found with ID: {game_id}")
                 return None
-        except sqlite3.Error as e:
-            logger.error(f"Error retrieving game: {e}")
-            return None
-        finally:
-            self.disconnect()
     
     def get_upcoming_games(self, days_ahead: int = 7) -> List[Dict[str, Any]]:
         """
@@ -278,23 +286,18 @@ class Database:
         Returns:
             List of dictionaries containing game data
         """
-        try:
-            self.connect()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             today = datetime.date.today()
             future_date = (today + datetime.timedelta(days=days_ahead)).isoformat()
             
-            self.cursor.execute(
+            cursor.execute(
                 "SELECT * FROM games WHERE game_date BETWEEN ? AND ? ORDER BY game_date, game_time",
                 (today.isoformat(), future_date)
             )
-            rows = self.cursor.fetchall()
+            rows = cursor.fetchall()
             
             return [dict(row) for row in rows]
-        except sqlite3.Error as e:
-            logger.error(f"Error retrieving upcoming games: {e}")
-            return []
-        finally:
-            self.disconnect()
     
     # Players table operations
     def insert_player(self, player_data: Dict[str, Any]) -> int:
@@ -307,19 +310,20 @@ class Database:
         Returns:
             player_id: The ID of the inserted player
         """
-        try:
-            now = datetime.datetime.now().isoformat()
-            self.connect()
-            
-            # Ensure required fields are present
-            required_fields = ['name', 'team']
-            for field in required_fields:
-                if field not in player_data:
-                    raise ValueError(f"Missing required field: {field}")
-            
-            # Add timestamps
-            player_data['created_at'] = now
-            player_data['updated_at'] = now
+        now = datetime.datetime.now().isoformat()
+        
+        # Ensure required fields are present
+        required_fields = ['name', 'team']
+        for field in required_fields:
+            if field not in player_data:
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Add timestamps
+        player_data['created_at'] = now
+        player_data['updated_at'] = now
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             
             # Insert player
             placeholders = ', '.join(['?'] * len(player_data))
@@ -327,18 +331,12 @@ class Database:
             values = list(player_data.values())
             
             query = f"INSERT OR REPLACE INTO players ({columns}) VALUES ({placeholders})"
-            self.cursor.execute(query, values)
-            self.conn.commit()
+            cursor.execute(query, values)
+            conn.commit()
             
-            player_id = self.cursor.lastrowid
+            player_id = cursor.lastrowid
             logger.info(f"Inserted/updated player: {player_data['name']} (ID: {player_id})")
             return player_id
-        except (sqlite3.Error, ValueError) as e:
-            logger.error(f"Error inserting player: {e}")
-            self.conn.rollback()
-            raise
-        finally:
-            self.disconnect()
     
     def update_player_status(self, player_id: int, status: str) -> bool:
         """
@@ -351,28 +349,23 @@ class Database:
         Returns:
             bool: True if successful, False otherwise
         """
-        try:
-            now = datetime.datetime.now().isoformat()
-            self.connect()
+        now = datetime.datetime.now().isoformat()
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             
-            self.cursor.execute(
+            cursor.execute(
                 "UPDATE players SET status = ?, updated_at = ? WHERE player_id = ?",
                 (status, now, player_id)
             )
-            self.conn.commit()
+            conn.commit()
             
-            if self.cursor.rowcount > 0:
+            if cursor.rowcount > 0:
                 logger.info(f"Updated player status: ID {player_id} to {status}")
                 return True
             else:
                 logger.warning(f"No player found with ID: {player_id}")
                 return False
-        except sqlite3.Error as e:
-            logger.error(f"Error updating player status: {e}")
-            self.conn.rollback()
-            return False
-        finally:
-            self.disconnect()
     
     def get_players_by_team(self, team: str) -> List[Dict[str, Any]]:
         """
@@ -384,17 +377,12 @@ class Database:
         Returns:
             List of dictionaries containing player data
         """
-        try:
-            self.connect()
-            self.cursor.execute("SELECT * FROM players WHERE team = ?", (team,))
-            rows = self.cursor.fetchall()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM players WHERE team = ?", (team,))
+            rows = cursor.fetchall()
             
             return [dict(row) for row in rows]
-        except sqlite3.Error as e:
-            logger.error(f"Error retrieving players for team {team}: {e}")
-            return []
-        finally:
-            self.disconnect()
     
     # Reddit data operations
     def insert_reddit_post(self, post_data: Dict[str, Any]) -> int:
@@ -407,18 +395,19 @@ class Database:
         Returns:
             post_id: The ID of the inserted post
         """
-        try:
-            now = datetime.datetime.now().isoformat()
-            self.connect()
-            
-            # Ensure required fields are present
-            required_fields = ['reddit_id', 'subreddit', 'title', 'created_utc']
-            for field in required_fields:
-                if field not in post_data:
-                    raise ValueError(f"Missing required field: {field}")
-            
-            # Add timestamp
-            post_data['created_at'] = now
+        now = datetime.datetime.now().isoformat()
+        
+        # Ensure required fields are present
+        required_fields = ['reddit_id', 'subreddit', 'title', 'created_utc']
+        for field in required_fields:
+            if field not in post_data:
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Add timestamp
+        post_data['created_at'] = now
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             
             # Insert post
             placeholders = ', '.join(['?'] * len(post_data))
@@ -426,21 +415,15 @@ class Database:
             values = list(post_data.values())
             
             query = f"INSERT OR IGNORE INTO reddit_posts ({columns}) VALUES ({placeholders})"
-            self.cursor.execute(query, values)
-            self.conn.commit()
+            cursor.execute(query, values)
+            conn.commit()
             
             # Get the post_id (either the new one or the existing one if the post was already in the DB)
-            self.cursor.execute("SELECT post_id FROM reddit_posts WHERE reddit_id = ?", (post_data['reddit_id'],))
-            post_id = self.cursor.fetchone()['post_id']
+            cursor.execute("SELECT post_id FROM reddit_posts WHERE reddit_id = ?", (post_data['reddit_id'],))
+            post_id = cursor.fetchone()['post_id']
             
             logger.info(f"Inserted/skipped Reddit post: {post_data['reddit_id']} (ID: {post_id})")
             return post_id
-        except (sqlite3.Error, ValueError) as e:
-            logger.error(f"Error inserting Reddit post: {e}")
-            self.conn.rollback()
-            raise
-        finally:
-            self.disconnect()
     
     def insert_reddit_comment(self, comment_data: Dict[str, Any]) -> int:
         """
@@ -452,18 +435,19 @@ class Database:
         Returns:
             comment_id: The ID of the inserted comment
         """
-        try:
-            now = datetime.datetime.now().isoformat()
-            self.connect()
-            
-            # Ensure required fields are present
-            required_fields = ['reddit_id', 'post_id', 'content', 'created_utc']
-            for field in required_fields:
-                if field not in comment_data:
-                    raise ValueError(f"Missing required field: {field}")
-            
-            # Add timestamp
-            comment_data['created_at'] = now
+        now = datetime.datetime.now().isoformat()
+        
+        # Ensure required fields are present
+        required_fields = ['reddit_id', 'post_id', 'content', 'created_utc']
+        for field in required_fields:
+            if field not in comment_data:
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Add timestamp
+        comment_data['created_at'] = now
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             
             # Insert comment
             placeholders = ', '.join(['?'] * len(comment_data))
@@ -471,21 +455,15 @@ class Database:
             values = list(comment_data.values())
             
             query = f"INSERT OR IGNORE INTO reddit_comments ({columns}) VALUES ({placeholders})"
-            self.cursor.execute(query, values)
-            self.conn.commit()
+            cursor.execute(query, values)
+            conn.commit()
             
             # Get the comment_id
-            self.cursor.execute("SELECT comment_id FROM reddit_comments WHERE reddit_id = ?", (comment_data['reddit_id'],))
-            comment_id = self.cursor.fetchone()['comment_id']
+            cursor.execute("SELECT comment_id FROM reddit_comments WHERE reddit_id = ?", (comment_data['reddit_id'],))
+            comment_id = cursor.fetchone()['comment_id']
             
             logger.info(f"Inserted/skipped Reddit comment: {comment_data['reddit_id']} (ID: {comment_id})")
             return comment_id
-        except (sqlite3.Error, ValueError) as e:
-            logger.error(f"Error inserting Reddit comment: {e}")
-            self.conn.rollback()
-            raise
-        finally:
-            self.disconnect()
     
     def get_reddit_posts_by_team(self, team: str, days_back: int = 7) -> List[Dict[str, Any]]:
         """
@@ -498,22 +476,17 @@ class Database:
         Returns:
             List of dictionaries containing post data
         """
-        try:
-            self.connect()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             cutoff_time = (datetime.datetime.now() - datetime.timedelta(days=days_back)).timestamp()
             
-            self.cursor.execute(
+            cursor.execute(
                 "SELECT * FROM reddit_posts WHERE team_mention = ? AND created_utc > ? ORDER BY created_utc DESC",
                 (team, cutoff_time)
             )
-            rows = self.cursor.fetchall()
+            rows = cursor.fetchall()
             
             return [dict(row) for row in rows]
-        except sqlite3.Error as e:
-            logger.error(f"Error retrieving Reddit posts for team {team}: {e}")
-            return []
-        finally:
-            self.disconnect()
     
     # Sentiment analysis operations
     def insert_sentiment_analysis(self, sentiment_data: Dict[str, Any]) -> int:
@@ -526,22 +499,23 @@ class Database:
         Returns:
             sentiment_id: The ID of the inserted record
         """
-        try:
-            now = datetime.datetime.now().isoformat()
-            self.connect()
-            
-            # Ensure required fields are present
-            required_fields = ['entity_type', 'entity_id', 'sentiment_score']
-            for field in required_fields:
-                if field not in sentiment_data:
-                    raise ValueError(f"Missing required field: {field}")
-            
-            # Ensure at least one of post_id or comment_id is present
-            if 'post_id' not in sentiment_data and 'comment_id' not in sentiment_data:
-                raise ValueError("Either post_id or comment_id must be provided")
-            
-            # Add timestamp
-            sentiment_data['created_at'] = now
+        now = datetime.datetime.now().isoformat()
+        
+        # Ensure required fields are present
+        required_fields = ['entity_type', 'entity_id', 'sentiment_score']
+        for field in required_fields:
+            if field not in sentiment_data:
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Ensure at least one of post_id or comment_id is present
+        if 'post_id' not in sentiment_data and 'comment_id' not in sentiment_data:
+            raise ValueError("Either post_id or comment_id must be provided")
+        
+        # Add timestamp
+        sentiment_data['created_at'] = now
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             
             # Insert sentiment analysis
             placeholders = ', '.join(['?'] * len(sentiment_data))
@@ -549,18 +523,12 @@ class Database:
             values = list(sentiment_data.values())
             
             query = f"INSERT INTO sentiment_analysis ({columns}) VALUES ({placeholders})"
-            self.cursor.execute(query, values)
-            self.conn.commit()
+            cursor.execute(query, values)
+            conn.commit()
             
-            sentiment_id = self.cursor.lastrowid
+            sentiment_id = cursor.lastrowid
             logger.info(f"Inserted sentiment analysis for {sentiment_data['entity_type']} {sentiment_data['entity_id']} (ID: {sentiment_id})")
             return sentiment_id
-        except (sqlite3.Error, ValueError) as e:
-            logger.error(f"Error inserting sentiment analysis: {e}")
-            self.conn.rollback()
-            raise
-        finally:
-            self.disconnect()
     
     def get_team_sentiment(self, team: str, days_back: int = 7) -> Tuple[float, int]:
         """
@@ -573,12 +541,12 @@ class Database:
         Returns:
             Tuple of (average sentiment score, number of sentiment records)
         """
-        try:
-            self.connect()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             cutoff_time = datetime.datetime.now() - datetime.timedelta(days=days_back)
             cutoff_str = cutoff_time.isoformat()
             
-            self.cursor.execute(
+            cursor.execute(
                 """
                 SELECT AVG(sentiment_score) as avg_sentiment, COUNT(*) as count
                 FROM sentiment_analysis
@@ -586,18 +554,13 @@ class Database:
                 """,
                 (team, cutoff_str)
             )
-            result = self.cursor.fetchone()
+            result = cursor.fetchone()
             
             if result and result['count'] > 0:
                 return (result['avg_sentiment'], result['count'])
             else:
                 logger.warning(f"No sentiment data found for team {team}")
                 return (0.0, 0)
-        except sqlite3.Error as e:
-            logger.error(f"Error retrieving team sentiment for {team}: {e}")
-            return (0.0, 0)
-        finally:
-            self.disconnect()
     
     # Prediction operations
     def insert_prediction(self, prediction_data: Dict[str, Any]) -> int:
@@ -610,18 +573,19 @@ class Database:
         Returns:
             prediction_id: The ID of the inserted prediction
         """
-        try:
-            now = datetime.datetime.now().isoformat()
-            self.connect()
-            
-            # Ensure required fields are present
-            required_fields = ['game_id', 'home_win_probability', 'prediction_timestamp']
-            for field in required_fields:
-                if field not in prediction_data:
-                    raise ValueError(f"Missing required field: {field}")
-            
-            # Add timestamp
-            prediction_data['created_at'] = now
+        now = datetime.datetime.now().isoformat()
+        
+        # Ensure required fields are present
+        required_fields = ['game_id', 'home_win_probability', 'prediction_timestamp']
+        for field in required_fields:
+            if field not in prediction_data:
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Add timestamp
+        prediction_data['created_at'] = now
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             
             # Insert prediction
             placeholders = ', '.join(['?'] * len(prediction_data))
@@ -629,18 +593,12 @@ class Database:
             values = list(prediction_data.values())
             
             query = f"INSERT INTO predictions ({columns}) VALUES ({placeholders})"
-            self.cursor.execute(query, values)
-            self.conn.commit()
+            cursor.execute(query, values)
+            conn.commit()
             
-            prediction_id = self.cursor.lastrowid
+            prediction_id = cursor.lastrowid
             logger.info(f"Inserted prediction for game {prediction_data['game_id']} (ID: {prediction_id})")
             return prediction_id
-        except (sqlite3.Error, ValueError) as e:
-            logger.error(f"Error inserting prediction: {e}")
-            self.conn.rollback()
-            raise
-        finally:
-            self.disconnect()
     
     def get_latest_prediction(self, game_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -652,9 +610,9 @@ class Database:
         Returns:
             Dict containing prediction data or None if not found
         """
-        try:
-            self.connect()
-            self.cursor.execute(
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
                 """
                 SELECT * FROM predictions
                 WHERE game_id = ?
@@ -663,18 +621,13 @@ class Database:
                 """,
                 (game_id,)
             )
-            row = self.cursor.fetchone()
+            row = cursor.fetchone()
             
             if row:
                 return dict(row)
             else:
                 logger.warning(f"No prediction found for game: {game_id}")
                 return None
-        except sqlite3.Error as e:
-            logger.error(f"Error retrieving prediction for game {game_id}: {e}")
-            return None
-        finally:
-            self.disconnect()
     
     def update_prediction_results(self, game_id: str, actual_result: str) -> bool:
         """
@@ -687,25 +640,19 @@ class Database:
         Returns:
             bool: True if successful, False otherwise
         """
-        try:
-            self.connect()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             now = datetime.datetime.now().isoformat()
             
-            self.cursor.execute(
+            cursor.execute(
                 "UPDATE games SET actual_result = ?, updated_at = ? WHERE game_id = ?",
                 (actual_result, now, game_id)
             )
-            self.conn.commit()
+            conn.commit()
             
-            if self.cursor.rowcount > 0:
+            if cursor.rowcount > 0:
                 logger.info(f"Updated game result for {game_id}: {actual_result}")
                 return True
             else:
                 logger.warning(f"No game found with ID: {game_id}")
                 return False
-        except sqlite3.Error as e:
-            logger.error(f"Error updating game result: {e}")
-            self.conn.rollback()
-            return False
-        finally:
-            self.disconnect()

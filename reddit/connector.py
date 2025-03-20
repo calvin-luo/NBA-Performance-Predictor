@@ -1,4 +1,5 @@
 import os
+import time
 import praw
 import logging
 from typing import Optional
@@ -43,6 +44,10 @@ class RedditConnector:
         
         # Initialize PRAW instance to None (will be created when needed)
         self.reddit = None
+        
+        # Rate limiting settings
+        self.max_retry_attempts = 3
+        self.base_backoff_time = 2  # seconds
     
     def _validate_credentials(self) -> None:
         """
@@ -73,23 +78,39 @@ class RedditConnector:
         Raises:
             Exception: If connection fails
         """
-        try:
-            # Create PRAW Reddit instance with credentials
-            self.reddit = praw.Reddit(
-                client_id=self.client_id,
-                client_secret=self.client_secret,
-                user_agent=self.user_agent
-            )
+        for attempt in range(self.max_retry_attempts):
+            try:
+                # Create PRAW Reddit instance with credentials
+                self.reddit = praw.Reddit(
+                    client_id=self.client_id,
+                    client_secret=self.client_secret,
+                    user_agent=self.user_agent
+                )
+                
+                # Verify that the instance is working by checking rate limit
+                self.reddit.auth.limits
+                
+                logger.info("Successfully connected to Reddit API")
+                return self.reddit
             
-            # Verify that the instance is working by checking rate limit
-            self.reddit.auth.limits
+            except praw.exceptions.RedditAPIException as e:
+                # Handle API-specific errors
+                if "rate limit" in str(e).lower():
+                    wait_time = self.base_backoff_time * (2 ** attempt)
+                    logger.warning(f"Rate limited by Reddit API. Waiting {wait_time} seconds before retry.")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"Reddit API error: {str(e)}")
+                    raise
             
-            logger.info("Successfully connected to Reddit API")
-            return self.reddit
+            except Exception as e:
+                logger.error(f"Failed to connect to Reddit API: {str(e)}")
+                raise
         
-        except Exception as e:
-            logger.error(f"Failed to connect to Reddit API: {str(e)}")
-            raise
+        # If all retries fail
+        logger.error(f"Failed to connect to Reddit API after {self.max_retry_attempts} attempts")
+        raise RuntimeError("Max retry attempts exceeded for Reddit API connection")
     
     def get_reddit_instance(self) -> Optional[praw.Reddit]:
         """
@@ -126,6 +147,40 @@ class RedditConnector:
         except Exception as e:
             logger.error(f"Reddit connection check failed: {str(e)}")
             return False
+    
+    def handle_rate_limit(self, func, *args, **kwargs):
+        """
+        Execute a function with rate limit handling.
+        
+        Args:
+            func: Function to execute
+            *args: Positional arguments for the function
+            **kwargs: Keyword arguments for the function
+            
+        Returns:
+            The result of the function
+        """
+        for attempt in range(self.max_retry_attempts):
+            try:
+                return func(*args, **kwargs)
+            
+            except praw.exceptions.RedditAPIException as e:
+                if "rate limit" in str(e).lower():
+                    wait_time = self.base_backoff_time * (2 ** attempt)
+                    logger.warning(f"Rate limited by Reddit API. Waiting {wait_time} seconds before retry.")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"Reddit API error: {str(e)}")
+                    raise
+            
+            except Exception as e:
+                logger.error(f"Error executing function {func.__name__}: {str(e)}")
+                raise
+        
+        # If all retries fail
+        logger.error(f"Function {func.__name__} failed after {self.max_retry_attempts} attempts due to rate limiting")
+        raise RuntimeError(f"Max retry attempts exceeded for {func.__name__} due to rate limiting")
     
     def close(self) -> None:
         """

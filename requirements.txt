@@ -1,34 +1,30 @@
-# Web Scraping
-requests>=2.28.0
-beautifulsoup4>=4.11.0
-lxml>=4.9.0
+# Web scraping
+requests>=2.28.1
+beautifulsoup4>=4.11.1
+lxml>=4.9.1
+
+# Database
+SQLAlchemy>=1.4.41
 
 # Reddit API
-praw>=7.6.0
+praw>=7.6.1
+prawcore>=2.3.0
 
-# Data Analysis
-pandas>=1.4.0
-numpy>=1.22.0
-
-# Natural Language Processing & Sentiment Analysis
-nltk>=3.7.0
-textblob>=0.17.1
-scikit-learn>=1.0.0
+# Natural Language Processing
+nltk>=3.7
 vaderSentiment>=3.3.2
 
-# Web Application
-Flask>=2.2.0
-Flask-WTF>=1.0.0
+# Web application
+Flask>=2.2.2
+Jinja2>=3.1.2
+Werkzeug>=2.2.2
 
-# Environment Variables
-python-dotenv>=0.20.0
+# Utility packages
+python-dotenv>=0.21.0
+schedule>=1.1.0
 
-# Visualization
-matplotlib>=3.5.0
-seaborn>=0.11.0
+# Date handling
+pytz>=2022.4
 
-# Date and Time
-pytz>=2022.1
-
-# Testing
-pytest>=7.0.0
+# For development/testing
+pytest>=7.1.3
