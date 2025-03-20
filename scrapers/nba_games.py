@@ -52,13 +52,23 @@ NBA_TEAMS = {
     "Washington Wizards": {"abbr": "WAS", "variants": ["wizards", "washington"]}
 }
 
-# Create reverse mapping from abbreviation to full team name
+# Create reverse mappings
 TEAM_ABBR_TO_NAME = {team_data["abbr"]: team_name for team_name, team_data in NBA_TEAMS.items()}
+TEAM_ABBR_TO_SHORTNAME = {
+    "ATL": "Hawks", "BOS": "Celtics", "BKN": "Nets", "CHA": "Hornets", 
+    "CHI": "Bulls", "CLE": "Cavaliers", "DAL": "Mavericks", "DEN": "Nuggets",
+    "DET": "Pistons", "GSW": "Warriors", "HOU": "Rockets", "IND": "Pacers",
+    "LAC": "Clippers", "LAL": "Lakers", "MEM": "Grizzlies", "MIA": "Heat", 
+    "MIL": "Bucks", "MIN": "Timberwolves", "NOP": "Pelicans", "NYK": "Knicks",
+    "OKC": "Thunder", "ORL": "Magic", "PHI": "76ers", "PHX": "Suns",
+    "POR": "Trail Blazers", "SAC": "Kings", "SAS": "Spurs", "TOR": "Raptors",
+    "UTA": "Jazz", "WAS": "Wizards"
+}
 
 
 class NBAGamesScraper:
     """
-    Scrapes NBA game schedules and information from ESPN.
+    Scrapes NBA game schedules from the official NBA.com schedule page.
     Focused on scraping same-day games for prediction.
     """
     
@@ -83,6 +93,9 @@ class NBAGamesScraper:
         
         # Delay between requests to be respectful of the servers
         self.request_delay = 2  # seconds
+        
+        # NBA.com schedule URL
+        self.schedule_url = "https://www.nba.com/schedule"
     
     def _make_request(self, url: str) -> Optional[str]:
         """
@@ -118,42 +131,54 @@ class NBAGamesScraper:
                     logger.error(f"Max retries reached. Giving up on URL: {url}")
                     return None
     
-    def _normalize_team_name(self, team_name: str) -> str:
+    def _parse_team_from_text(self, team_text: str) -> str:
         """
-        Normalize team name to the official NBA team name.
+        Parse and normalize team name from text.
         
         Args:
-            team_name: Team name to normalize
+            team_text: Team name text to parse
             
         Returns:
             Normalized team name
         """
-        # Try direct match with team abbreviation
-        team_name = team_name.strip()
-        if team_name in TEAM_ABBR_TO_NAME:
-            return TEAM_ABBR_TO_NAME[team_name]
+        # First, check if it's a city + name format (e.g., "New York Knicks")
+        for team_name in NBA_TEAMS.keys():
+            if team_name.lower() in team_text.lower():
+                return team_name
         
-        # Try to match with official team name
-        for official_name in NBA_TEAMS:
-            if team_name.lower() == official_name.lower():
-                return official_name
+        # Next, check for short name (e.g., "Knicks")
+        for team_name, team_data in NBA_TEAMS.items():
+            short_name = team_name.split()[-1]  # Get last word of team name
+            if short_name.lower() in team_text.lower():
+                return team_name
+            
+            # Check variants
+            for variant in team_data["variants"]:
+                if variant.lower() in team_text.lower():
+                    return team_name
         
-        # Try to match with team variants
-        team_name_lower = team_name.lower()
-        for official_name, team_data in NBA_TEAMS.items():
-            if any(variant in team_name_lower for variant in team_data["variants"]):
-                return official_name
+        # If still not found, return the original text
+        logger.warning(f"Could not parse team name from: {team_text}")
+        return team_text
+    
+    def _parse_team_from_abbr(self, abbr: str) -> str:
+        """
+        Convert team abbreviation to full team name.
         
-        # If no match found, return the original name
-        logger.warning(f"Could not normalize team name: {team_name}")
-        return team_name
+        Args:
+            abbr: Team abbreviation (e.g., "NYK")
+            
+        Returns:
+            Full team name
+        """
+        return TEAM_ABBR_TO_NAME.get(abbr.upper(), abbr)
     
     def _parse_time(self, time_str: str) -> str:
         """
         Parse a time string into a consistent 24-hour format.
         
         Args:
-            time_str: Time string (e.g., "7:30 PM ET")
+            time_str: Time string (e.g., "7:00 PM ET")
             
         Returns:
             Time in HH:MM format
@@ -199,9 +224,9 @@ class NBAGamesScraper:
         
         return f"{date_no_sep}_{away_abbr}_{home_abbr}"
     
-    def scrape_espn_schedule(self, days_ahead: int = 1) -> List[Dict[str, Any]]:
+    def scrape_nba_schedule(self, days_ahead: int = 1) -> List[Dict[str, Any]]:
         """
-        Scrape NBA game schedule from ESPN.
+        Scrape NBA game schedule from the official NBA.com website.
         
         Args:
             days_ahead: Number of days ahead to scrape (default 1 for same-day prediction)
@@ -209,158 +234,206 @@ class NBAGamesScraper:
         Returns:
             List of dictionaries containing game information
         """
-        # ESPN Schedule URL
-        base_url = "https://www.espn.com/nba/schedule"
-        today = datetime.date.today()
+        html_content = self._make_request(self.schedule_url)
+        if not html_content:
+            logger.error("Failed to retrieve NBA.com schedule page")
+            return []
         
+        soup = BeautifulSoup(html_content, 'html.parser')
         all_games = []
         
-        # Scrape for each date
-        for day_offset in range(days_ahead):
-            target_date = today + datetime.timedelta(days=day_offset)
-            date_param = target_date.strftime("%Y%m%d")
+        # Based on the screenshot, we need to find the schedule section for today/tomorrow
+        # The screenshot shows games listed under "THURSDAY, MARCH 20"
+        try:
+            # Look for date headers (e.g., "THURSDAY, MARCH 20")
+            date_headers = soup.find_all(['h3', 'h4', 'div'], string=lambda s: s and re.match(r'[A-Z]+DAY,\s+[A-Z]+\s+\d+', s))
             
-            # Only add the date parameter if we're not looking at today
-            url = base_url if day_offset == 0 else f"{base_url}/_/date/{date_param}"
-            
-            html_content = self._make_request(url)
-            if not html_content:
-                continue
-            
-            soup = BeautifulSoup(html_content, 'html.parser')
-            
-            # Find all tables that might contain schedule information
-            schedule_tables = soup.find_all('table', class_=lambda c: c and ('schedule' in c.lower() or 'Table' in c))
-            
-            if not schedule_tables:
-                logger.warning(f"No schedule tables found for date: {target_date}. Trying alternative parsing.")
+            for date_header in date_headers[:days_ahead]:  # Limit to the specified days ahead
+                date_text = date_header.text.strip()
                 
-                # Try to find game cards or game containers
-                game_containers = soup.find_all('div', class_=lambda c: c and ('event' in c.lower() or 'game' in c.lower() or 'matchup' in c.lower()))
-                
-                if game_containers:
-                    for game in game_containers:
-                        try:
-                            # Find team names
-                            team_elements = game.find_all(['a', 'span', 'div'], class_=lambda c: c and ('team' in c.lower() or 'competitor' in c.lower()))
+                try:
+                    # Parse date from header text (e.g., "THURSDAY, MARCH 20" -> 2025-03-20)
+                    # Note: Need to add year since it might not be in the header
+                    current_year = datetime.datetime.now().year
+                    date_match = re.search(r'[A-Z]+DAY,\s+([A-Z]+)\s+(\d+)', date_text)
+                    
+                    if date_match:
+                        month_name = date_match.group(1)
+                        day = int(date_match.group(2))
+                        
+                        # Convert month name to number
+                        month_names = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+                                      'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER']
+                        month = month_names.index(month_name) + 1
+                        
+                        # Create date object
+                        game_date = datetime.date(current_year, month, day)
+                        game_date_str = game_date.strftime("%Y-%m-%d")
+                        
+                        # Find the list of games under this date header
+                        # Look for game entries after this header until the next header
+                        next_element = date_header.find_next_sibling()
+                        
+                        # Process all game entries under this date
+                        while next_element and not (next_element.name in ['h3', 'h4'] and 
+                                                   re.match(r'[A-Z]+DAY,\s+[A-Z]+\s+\d+', next_element.text.strip())):
                             
-                            # If specific team elements not found, try a more generic approach
-                            if len(team_elements) < 2:
-                                team_elements = game.find_all(['a', 'span', 'div'], string=lambda s: s and any(team in s.lower() for team_name, team_data in NBA_TEAMS.items() for team in team_data["variants"]))
+                            # Based on screenshot, each game has time, teams, and venue information
+                            # Look for time elements (e.g., "7:00 PM ET")
+                            time_element = next_element.find(['div', 'span', 'p'], string=lambda s: s and re.search(r'\d+:\d+\s+[AP]M\s+ET', s))
+                            
+                            if time_element:
+                                game_time = self._parse_time(time_element.text.strip())
+                                
+                                # Find team names
+                                # From the screenshot, team names appear as links
+                                team_links = next_element.find_all('a', href=lambda h: h and '/team/' in h)
+                                
+                                if len(team_links) >= 2:  # Need at least home and away teams
+                                    away_team_name = self._parse_team_from_text(team_links[0].text.strip())
+                                    home_team_name = self._parse_team_from_text(team_links[1].text.strip())
+                                    
+                                    # Find venue information
+                                    venue_element = next_element.find(['div', 'span', 'p'], string=lambda s: s and 'Center' in s)
+                                    venue = venue_element.text.strip() if venue_element else "Unknown"
+                                    
+                                    # Generate game ID
+                                    game_id = self._generate_game_id(home_team_name, away_team_name, game_date_str)
+                                    
+                                    # Create game data
+                                    game_data = {
+                                        'game_id': game_id,
+                                        'home_team': home_team_name,
+                                        'away_team': away_team_name,
+                                        'game_date': game_date_str,
+                                        'game_time': game_time,
+                                        'venue': venue
+                                    }
+                                    
+                                    all_games.append(game_data)
+                                    logger.info(f"Found game: {away_team_name} @ {home_team_name} on {game_date_str} at {game_time}")
+                            
+                            # Move to the next element
+                            next_element = next_element.find_next_sibling()
+                
+                except Exception as e:
+                    logger.error(f"Error processing games for date {date_text}: {str(e)}")
+                    continue
+        
+        except Exception as e:
+            logger.error(f"Error parsing NBA.com schedule: {str(e)}")
+        
+        # Alternative approach based on the exact structure shown in the screenshot
+        if not all_games:
+            logger.info("Trying alternative parsing approach for NBA.com schedule")
+            
+            try:
+                # Look for game rows with time, teams, and venue
+                game_rows = soup.find_all('div', class_=lambda c: c and ('GameCard' in c or 'GameRow' in c or 'GameInfo' in c))
+                
+                today = datetime.date.today()
+                today_str = today.strftime("%Y-%m-%d")
+                
+                for game_row in game_rows:
+                    try:
+                        # Find time element
+                        time_element = game_row.find(['span', 'div', 'p'], string=lambda s: s and re.search(r'\d+:\d+\s+[AP]M', s))
+                        
+                        if time_element:
+                            game_time = self._parse_time(time_element.text.strip())
+                            
+                            # Find team elements - based on the structure in the screenshot
+                            # Look for team abbreviations and full names
+                            team_elements = game_row.find_all(['a', 'span', 'div'], string=lambda s: s and any(abbr.lower() in s.lower() for abbr in TEAM_ABBR_TO_NAME.keys()))
                             
                             if len(team_elements) >= 2:
-                                away_team = self._normalize_team_name(team_elements[0].text.strip())
-                                home_team = self._normalize_team_name(team_elements[1].text.strip())
+                                away_team = self._parse_team_from_text(team_elements[0].text.strip())
+                                home_team = self._parse_team_from_text(team_elements[1].text.strip())
                                 
-                                # Find game time
-                                time_element = game.find(['span', 'div'], string=lambda s: s and (':' in s and ('PM' in s or 'AM' in s)))
+                                # Find venue information
+                                venue_element = game_row.find(['span', 'div', 'p'], string=lambda s: s and ('Center' in s or 'Arena' in s))
+                                venue = venue_element.text.strip() if venue_element else "Unknown"
                                 
-                                if time_element:
-                                    time_text = time_element.text.strip()
-                                    game_time = self._parse_time(time_text)
-                                else:
-                                    # Try to find time in other formats
-                                    time_element = game.find(['span', 'div'], string=lambda s: s and re.search(r'\d+:\d+', s))
-                                    if time_element:
-                                        game_time = self._parse_time(time_element.text.strip())
-                                    else:
-                                        game_time = "19:00"  # Default if time not found
+                                # Generate game ID
+                                game_id = self._generate_game_id(home_team, away_team, today_str)
                                 
-                                # Use target date for game date
-                                game_date = target_date.strftime("%Y-%m-%d")
-                                
-                                # Generate a unique game ID
-                                game_id = self._generate_game_id(home_team, away_team, game_date)
-                                
-                                # Create game data dictionary
+                                # Create game data
                                 game_data = {
                                     'game_id': game_id,
                                     'home_team': home_team,
                                     'away_team': away_team,
-                                    'game_date': game_date,
+                                    'game_date': today_str,
                                     'game_time': game_time,
-                                    'venue': "Unknown"  # ESPN might not show venue in this view
+                                    'venue': venue
                                 }
                                 
                                 all_games.append(game_data)
-                                logger.info(f"Found game: {away_team} @ {home_team} at {game_time}")
-                                
-                        except Exception as e:
-                            logger.error(f"Error parsing game container: {str(e)}")
-                            continue
-                else:
-                    logger.warning(f"No games found for date: {target_date} using alternative parsing.")
-            
-            # Process schedule tables if found
-            for table in schedule_tables:
-                # Find all the game rows
-                game_rows = table.find_all('tr')
-                
-                # Skip header row
-                for row in game_rows[1:]:
-                    try:
-                        cells = row.find_all('td')
-                        
-                        # Skip rows that don't have enough cells
-                        if len(cells) < 2:
-                            continue
-                        
-                        # Extract teams
-                        away_team_element = cells[0].find('a', {'name': 'awayTeam'}) or cells[0].find('a')
-                        home_team_element = cells[1].find('a', {'name': 'homeTeam'}) or cells[1].find('a')
-                        
-                        if not away_team_element or not home_team_element:
-                            logger.warning(f"Could not find team elements in row")
-                            continue
-                        
-                        away_team = self._normalize_team_name(away_team_element.text.strip())
-                        home_team = self._normalize_team_name(home_team_element.text.strip())
-                        
-                        # Extract game time
-                        time_element = None
-                        for cell in cells[2:]:
-                            possible_time = cell.get_text().strip()
-                            if ':' in possible_time and ('AM' in possible_time or 'PM' in possible_time):
-                                time_element = possible_time
-                                break
-                        
-                        if time_element:
-                            game_time = self._parse_time(time_element)
-                        else:
-                            game_time = "19:00"  # Default to 7 PM if time not found
-                        
-                        # Extract venue if available
-                        venue = "Unknown"
-                        for cell in cells:
-                            venue_text = cell.get_text().strip()
-                            if "arena" in venue_text.lower() or "center" in venue_text.lower():
-                                venue = venue_text
-                                break
-                        
-                        # Use target date
-                        game_date = target_date.strftime("%Y-%m-%d")
-                        
-                        # Generate a unique game ID
-                        game_id = self._generate_game_id(home_team, away_team, game_date)
-                        
-                        # Create game data dictionary
-                        game_data = {
-                            'game_id': game_id,
-                            'home_team': home_team,
-                            'away_team': away_team,
-                            'game_date': game_date,
-                            'game_time': game_time,
-                            'venue': venue
-                        }
-                        
-                        all_games.append(game_data)
-                        logger.info(f"Found game: {away_team} @ {home_team} at {game_time}")
-                        
+                                logger.info(f"Found game using alternative approach: {away_team} @ {home_team} at {game_time}")
+                    
                     except Exception as e:
-                        logger.error(f"Error parsing game row: {str(e)}")
+                        logger.error(f"Error processing game row: {str(e)}")
                         continue
+            
+            except Exception as e:
+                logger.error(f"Error with alternative parsing approach: {str(e)}")
         
-        logger.info(f"Scraped {len(all_games)} games from ESPN schedule for the next {days_ahead} days")
+        # If still no games, use direct pattern matching based on screenshot structure
+        if not all_games:
+            logger.info("Trying direct pattern matching for NBA schedule")
+            
+            try:
+                # Look for patterns like "7:00 PM ET" close to team names
+                time_elements = soup.find_all(['div', 'span', 'p'], string=lambda s: s and re.search(r'\d+:\d+\s+[AP]M\s+ET', s))
+                
+                today = datetime.date.today()
+                today_str = today.strftime("%Y-%m-%d")
+                
+                for time_element in time_elements:
+                    try:
+                        game_time = self._parse_time(time_element.text.strip())
+                        
+                        # Look for nearby elements that might contain team information
+                        parent = time_element.parent
+                        
+                        # Find team elements in the same container
+                        team_links = parent.find_all('a', href=lambda h: h and '/team/' in h)
+                        
+                        # If no direct links, try looking for text that matches team names
+                        if len(team_links) < 2:
+                            team_text_elements = parent.find_all(['div', 'span', 'p', 'a'], string=lambda s: s and any(team.lower() in s.lower() for team in TEAM_ABBR_TO_SHORTNAME.values()))
+                            
+                            if len(team_text_elements) >= 2:
+                                away_team = self._parse_team_from_text(team_text_elements[0].text.strip())
+                                home_team = self._parse_team_from_text(team_text_elements[1].text.strip())
+                                
+                                # Look for venue in nearby elements
+                                venue_element = parent.find(['div', 'span', 'p'], string=lambda s: s and ('Center' in s or 'Arena' in s))
+                                venue = venue_element.text.strip() if venue_element else "Unknown"
+                                
+                                # Generate game ID
+                                game_id = self._generate_game_id(home_team, away_team, today_str)
+                                
+                                # Create game data
+                                game_data = {
+                                    'game_id': game_id,
+                                    'home_team': home_team,
+                                    'away_team': away_team,
+                                    'game_date': today_str,
+                                    'game_time': game_time,
+                                    'venue': venue
+                                }
+                                
+                                all_games.append(game_data)
+                                logger.info(f"Found game using pattern matching: {away_team} @ {home_team} at {game_time}")
+                    
+                    except Exception as e:
+                        logger.error(f"Error processing time element: {str(e)}")
+                        continue
+            
+            except Exception as e:
+                logger.error(f"Error with pattern matching approach: {str(e)}")
+        
+        logger.info(f"Scraped {len(all_games)} games from NBA.com schedule")
         return all_games
     
     def save_games_to_database(self, games: List[Dict[str, Any]]) -> int:
@@ -400,7 +473,7 @@ class NBAGamesScraper:
     
     def scrape_and_save_games(self, days_ahead: int = 1) -> int:
         """
-        Scrape games from ESPN and save them to the database.
+        Scrape games from NBA.com and save them to the database.
         Limited to same-day prediction (default days_ahead=1).
         
         Args:
@@ -412,8 +485,8 @@ class NBAGamesScraper:
         # Initialize database if not already connected
         self.db.initialize_database()
         
-        # Scrape from ESPN
-        games = self.scrape_espn_schedule(days_ahead)
+        # Scrape from NBA.com
+        games = self.scrape_nba_schedule(days_ahead)
         
         # Save games to database
         saved_count = self.save_games_to_database(games)

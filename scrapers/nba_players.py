@@ -27,10 +27,19 @@ PLAYER_STATUSES = {
     'unknown': ['unknown']
 }
 
+# Position abbreviations
+POSITIONS = {
+    'PG': 'Point Guard',
+    'SG': 'Shooting Guard',
+    'SF': 'Small Forward',
+    'PF': 'Power Forward',
+    'C': 'Center'
+}
+
 
 class NBAPlayersScraper:
     """
-    Scrapes NBA player information and statuses from ESPN and NBA.com.
+    Scrapes NBA player information and lineups exclusively from NBA.com/players/todays-lineups.
     """
     
     def __init__(self, db: Optional[Database] = None):
@@ -55,9 +64,8 @@ class NBAPlayersScraper:
         # Delay between requests to be respectful of the servers
         self.request_delay = 2  # seconds
         
-        # URLs for player data
-        self.espn_injuries_url = "https://www.espn.com/nba/injuries"
-        self.nba_lineups_url = "https://www.nba.com/players/todays-lineups"
+        # NBA.com lineups URL (the only source we'll use)
+        self.lineups_url = "https://www.nba.com/players/todays-lineups"
     
     def _make_request(self, url: str) -> Optional[str]:
         """
@@ -93,35 +101,32 @@ class NBAPlayersScraper:
                     logger.error(f"Max retries reached. Giving up on URL: {url}")
                     return None
     
-    def _normalize_team_name(self, team_name: str) -> str:
+    def _normalize_team_name(self, team_abbr: str) -> str:
         """
-        Normalize team name to the official NBA team name.
+        Normalize team abbreviation to the official NBA team name.
         
         Args:
-            team_name: Team name to normalize
+            team_abbr: Team abbreviation to normalize
             
         Returns:
             Normalized team name
         """
-        # Try direct match with team abbreviation
-        team_name = team_name.strip()
-        if team_name in TEAM_ABBR_TO_NAME:
-            return TEAM_ABBR_TO_NAME[team_name]
+        # Look up full team name from abbreviation
+        if team_abbr.upper() in TEAM_ABBR_TO_NAME:
+            return TEAM_ABBR_TO_NAME[team_abbr.upper()]
         
-        # Try to match with official team name
-        for official_name in NBA_TEAMS:
-            if team_name.lower() == official_name.lower():
-                return official_name
+        # If not found directly, try to match with team variants
+        for team_name, team_data in NBA_TEAMS.items():
+            if team_abbr.lower() == team_data["abbr"].lower():
+                return team_name
+            
+            # Also check if the abbreviation is in variants
+            if team_abbr.lower() in [v.lower() for v in team_data["variants"]]:
+                return team_name
         
-        # Try to match with team variants
-        team_name_lower = team_name.lower()
-        for official_name, team_data in NBA_TEAMS.items():
-            if any(variant in team_name_lower for variant in team_data["variants"]):
-                return official_name
-        
-        # If no match found, return the original name
-        logger.warning(f"Could not normalize team name: {team_name}")
-        return team_name
+        # If no match found, return the original abbreviation
+        logger.warning(f"Could not normalize team abbreviation: {team_abbr}")
+        return team_abbr
     
     def _normalize_player_status(self, status_text: str) -> str:
         """
@@ -134,7 +139,7 @@ class NBAPlayersScraper:
             Normalized status
         """
         if not status_text:
-            return 'unknown'
+            return 'active'  # Default to active for starting lineups
         
         status_lower = status_text.lower().strip()
         
@@ -143,225 +148,230 @@ class NBAPlayersScraper:
             if any(keyword in status_lower for keyword in keywords):
                 return status_category
         
-        # Additional patterns for injury statuses
-        if re.search(r'(injury|injured|hurt)', status_lower):
-            return 'out'
-        
-        if re.search(r'(expected to play|likely)', status_lower):
-            return 'active'
-        
-        # Default to unknown if no match found
-        return 'unknown'
+        # Default to active for players in today's lineups
+        return 'active'
     
-    def scrape_espn_injury_report(self) -> List[Dict[str, Any]]:
-        """
-        Scrape NBA injury report from ESPN.
-        
-        Returns:
-            List of dictionaries containing player information
-        """
-        html_content = self._make_request(self.espn_injuries_url)
-        if not html_content:
-            return []
-        
-        soup = BeautifulSoup(html_content, 'html.parser')
-        
-        players = []
-        
-        # Find all team sections
-        team_sections = soup.find_all('div', class_='ResponsiveTable')
-        if not team_sections:
-            team_sections = soup.find_all('div', class_=lambda c: c and ('TeamSection' in c or 'Team' in c or 'team' in c.lower()))
-        
-        for section in team_sections:
-            try:
-                # Try to extract team name
-                team_header = section.find_previous(['h1', 'h2', 'h3', 'div'], class_=lambda c: c and ('title' in c.lower() or 'header' in c.lower() or 'TeamName' in c))
-                
-                if not team_header or not team_header.text.strip():
-                    # Try alternative ways to get the team name
-                    team_header = section.find(['div', 'span'], class_=lambda c: c and ('team' in c.lower()))
-                    
-                    # If still not found, look at the section id or class
-                    if not team_header:
-                        section_id = section.get('id', '')
-                        if section_id and any(team_abbr.lower() in section_id.lower() for team_abbr in TEAM_ABBR_TO_NAME.keys()):
-                            for team_abbr in TEAM_ABBR_TO_NAME.keys():
-                                if team_abbr.lower() in section_id.lower():
-                                    team_name = TEAM_ABBR_TO_NAME[team_abbr]
-                                    break
-                            else:
-                                logger.warning("Could not find team name in injury report section")
-                                continue
-                        else:
-                            logger.warning("Could not find team name in injury report section")
-                            continue
-                else:
-                    team_name_text = team_header.text.strip()
-                    # Remove common suffixes like "Injuries" from team name
-                    team_name_text = re.sub(r'\s+(injuries|injury report)$', '', team_name_text, flags=re.IGNORECASE)
-                    team_name = self._normalize_team_name(team_name_text)
-                
-                if team_name not in NBA_TEAMS:
-                    continue
-                
-                # Find player rows - look for table rows or list items
-                player_rows = section.find_all('tr')
-                if not player_rows:
-                    player_rows = section.find_all(['li', 'div'], class_=lambda c: c and ('player' in c.lower() or 'row' in c.lower() or 'Row' in c))
-                
-                for row in player_rows:
-                    try:
-                        # Skip header rows
-                        if row.find('th'):
-                            continue
-                        
-                        # Try to find player name and status
-                        cells = row.find_all('td')
-                        
-                        if cells:
-                            # Table format
-                            name_cell = cells[0] if len(cells) > 0 else None
-                            player_name = name_cell.text.strip() if name_cell else ""
-                            
-                            # Extract position (if available)
-                            position = cells[1].text.strip() if len(cells) > 1 else ""
-                            
-                            # Extract status
-                            status_cell = cells[2] if len(cells) > 2 else None
-                            status_text = status_cell.text.strip() if status_cell else "Unknown"
-                        else:
-                            # Non-table format
-                            name_elem = row.find(['span', 'div', 'a'], class_=lambda c: c and ('name' in c.lower() or 'player' in c.lower() or 'Name' in c))
-                            status_elem = row.find(['span', 'div', 'p'], class_=lambda c: c and ('status' in c.lower() or 'injury' in c.lower() or 'Status' in c or 'Injury' in c))
-                            
-                            if name_elem:
-                                player_name = name_elem.text.strip()
-                                status_text = status_elem.text.strip() if status_elem else "Unknown"
-                                position = ""  # Position might not be available
-                            else:
-                                # Try to extract from raw text
-                                row_text = row.get_text().strip()
-                                match = re.search(r'^([^:]+):\s*(.+)$', row_text)
-                                if match:
-                                    player_name = match.group(1).strip()
-                                    status_text = match.group(2).strip()
-                                    position = ""
-                                else:
-                                    continue  # Skip if can't parse
-                        
-                        # Skip empty player names
-                        if not player_name:
-                            continue
-                        
-                        # Normalize status
-                        status = self._normalize_player_status(status_text)
-                        
-                        # Create player data
-                        player_data = {
-                            'name': player_name,
-                            'team': team_name,
-                            'position': position,
-                            'status': status,
-                            'status_detail': status_text
-                        }
-                        
-                        players.append(player_data)
-                        
-                    except Exception as e:
-                        logger.error(f"Error parsing player row: {str(e)}")
-                        continue
-                
-            except Exception as e:
-                logger.error(f"Error parsing team section: {str(e)}")
-                continue
-        
-        logger.info(f"Scraped {len(players)} players from ESPN injury report")
-        return players
-    
-    def scrape_nba_lineups(self) -> List[Dict[str, Any]]:
+    def scrape_todays_lineups(self) -> List[Dict[str, Any]]:
         """
         Scrape NBA lineups from NBA.com's Today's Lineups page.
         
         Returns:
             List of dictionaries containing player information
         """
-        html_content = self._make_request(self.nba_lineups_url)
+        html_content = self._make_request(self.lineups_url)
         if not html_content:
+            logger.error("Failed to retrieve NBA.com lineups page")
             return []
         
         soup = BeautifulSoup(html_content, 'html.parser')
-        
         players = []
         
-        # Try to find game containers
-        game_containers = soup.find_all('div', class_=lambda c: c and ('game' in c.lower() or 'Game' in c or 'matchup' in c.lower() or 'Matchup' in c))
-        
-        if not game_containers:
-            logger.warning("Could not find game containers on NBA lineups page")
-            return players
-        
-        for game_container in game_containers:
-            try:
-                # Find team names in the game container
-                team_elements = game_container.find_all(['h2', 'h3', 'div', 'span'], class_=lambda c: c and ('team' in c.lower() or 'TeamName' in c))
-                
-                if len(team_elements) < 2:
-                    # Try alternative approach
-                    team_elements = game_container.find_all(['h2', 'h3', 'div', 'span'], string=lambda s: s and any(team in s.lower() for team_name, team_data in NBA_TEAMS.items() for team in team_data["variants"]))
-                
-                if len(team_elements) < 2:
-                    logger.warning("Couldn't find both teams in game container")
-                    continue
-                
-                # Get team names
-                team_names = [self._normalize_team_name(team.text.strip()) for team in team_elements[:2]]
-                
-                # Find player sections for each team
-                player_sections = game_container.find_all('div', class_=lambda c: c and ('players' in c.lower() or 'roster' in c.lower() or 'lineup' in c.lower()))
-                
-                if len(player_sections) < 2:
-                    logger.warning("Couldn't find player sections for both teams")
-                    continue
-                
-                # Process up to 2 teams (home and away)
-                for idx, (team_name, player_section) in enumerate(zip(team_names[:2], player_sections[:2])):
-                    # Find all player elements
-                    player_elements = player_section.find_all(['div', 'li', 'span'], class_=lambda c: c and ('player' in c.lower() or 'Player' in c or 'name' in c.lower()))
+        # Based on the screenshot, we need to look for game matchups and player listings
+        # The layout shows matchups like "NYK VS CHA", "BKN VS IND", etc.
+        try:
+            # Find all game matchup headers
+            matchup_headers = soup.find_all(['h2', 'h3', 'div'], string=lambda s: s and re.search(r'[A-Z]{3}\s+VS\s+[A-Z]{3}', s))
+            
+            # If no direct headers, look for elements with matchup class or structure
+            if not matchup_headers:
+                matchup_headers = soup.find_all(['div', 'h2', 'h3'], class_=lambda c: c and ('matchup' in c.lower() or 'Matchup' in c))
+            
+            # If still not found, look for the exact structure in the screenshot
+            if not matchup_headers:
+                # Look for elements containing team abbreviations separated by VS
+                matchup_headers = []
+                for element in soup.find_all(['div', 'h2', 'h3', 'span']):
+                    if element.text and re.search(r'[A-Z]{3}\s+VS\s+[A-Z]{3}', element.text.strip()):
+                        matchup_headers.append(element)
+            
+            logger.info(f"Found {len(matchup_headers)} game matchups")
+            
+            for matchup in matchup_headers:
+                try:
+                    # Extract team abbreviations from matchup heading
+                    matchup_text = matchup.text.strip()
+                    teams_match = re.search(r'([A-Z]{3})\s+VS\s+([A-Z]{3})', matchup_text)
                     
-                    for player_element in player_elements:
+                    if teams_match:
+                        away_abbr = teams_match.group(1)
+                        home_abbr = teams_match.group(2)
+                        
+                        away_team = self._normalize_team_name(away_abbr)
+                        home_team = self._normalize_team_name(home_abbr)
+                        
+                        logger.info(f"Processing matchup: {away_team} @ {home_team}")
+                        
+                        # Find the team sections for this matchup
+                        # Based on the screenshot, each matchup has two team sections with players
+                        
+                        # Find team container elements near the matchup
+                        team_containers = []
+                        
+                        # First look in the parent container
+                        parent = matchup.parent
+                        team_elements = parent.find_all(['div', 'section'], class_=lambda c: c and ('team' in str(c).lower() or 'Team' in str(c)))
+                        
+                        if team_elements and len(team_elements) >= 2:
+                            team_containers = team_elements[:2]  # Away and home team containers
+                        else:
+                            # Try looking at siblings or nearby elements
+                            # Check if there are tab elements or sections labeled with the team abbreviations
+                            away_element = parent.find(['div', 'section', 'tab'], string=lambda s: s and away_abbr in s)
+                            home_element = parent.find(['div', 'section', 'tab'], string=lambda s: s and home_abbr in s)
+                            
+                            if away_element and home_element:
+                                team_containers = [away_element, home_element]
+                            else:
+                                # Direct approach: look for the exact team abbreviations as standalone headers
+                                next_element = matchup.find_next_sibling()
+                                while next_element and len(team_containers) < 2:
+                                    if next_element.text.strip() in [away_abbr, home_abbr]:
+                                        team_containers.append(next_element)
+                                    next_element = next_element.find_next_sibling()
+                        
+                        # If still not found, use direct reference to the screenshot's exact structure
+                        if not team_containers or len(team_containers) < 2:
+                            # Look for container elements with team tables
+                            team_tables = parent.find_all('table')
+                            if team_tables and len(team_tables) >= 2:
+                                # Create containers from the tables
+                                team_containers = team_tables[:2]
+                        
+                        # Process team containers
+                        for idx, container in enumerate(team_containers[:2]):  # Process up to 2 teams
+                            team_name = away_team if idx == 0 else home_team
+                            
+                            # Find player elements in this team container
+                            # Based on the screenshot, players are listed with position (SG, SF, etc.)
+                            
+                            # Try to find player rows or elements
+                            player_elements = container.find_all(['tr', 'div', 'li'], class_=lambda c: c and ('player' in str(c).lower() or 'Player' in str(c)))
+                            
+                            # If no player elements with class, look for elements containing position abbreviations
+                            if not player_elements:
+                                for pos in POSITIONS.keys():
+                                    pos_elements = container.find_all(['span', 'div'], string=lambda s: s and s.strip() == pos)
+                                    for pos_elem in pos_elements:
+                                        # Find the parent element that represents the player
+                                        player_parent = pos_elem.parent
+                                        if player_parent and player_parent not in player_elements:
+                                            player_elements.append(player_parent)
+                            
+                            # Direct approach: Look for orange blocks that indicate players (from screenshot)
+                            if not player_elements:
+                                orange_elements = container.find_all(['div', 'span'], style=lambda s: s and 'background-color: #f60' in s.lower())
+                                for elem in orange_elements:
+                                    player_parent = elem.parent
+                                    if player_parent and player_parent not in player_elements:
+                                        player_elements.append(player_parent)
+                            
+                            # Process each player element
+                            for player_elem in player_elements:
+                                try:
+                                    # Extract player name
+                                    # Based on the screenshot format, player names are prominent
+                                    name_element = player_elem.find(['span', 'div', 'a'], class_=lambda c: c and ('name' in str(c).lower() or 'Name' in str(c)))
+                                    
+                                    # If no specific class, try to find by context (positioning near position marker)
+                                    if not name_element:
+                                        # Look for text that doesn't match position abbreviations
+                                        for text_elem in player_elem.find_all(['span', 'div', 'a']):
+                                            if text_elem.text.strip() and text_elem.text.strip() not in POSITIONS.keys():
+                                                name_element = text_elem
+                                                break
+                                    
+                                    # If still not found, check directly for a name pattern
+                                    if not name_element:
+                                        # Look for elements that match name patterns (First Last)
+                                        name_pattern = re.compile(r'[A-Z][a-z]+\s+[A-Z][a-z]+')
+                                        for text_elem in player_elem.find_all(['span', 'div', 'a']):
+                                            if text_elem.text and name_pattern.match(text_elem.text.strip()):
+                                                name_element = text_elem
+                                                break
+                                    
+                                    # Extract position
+                                    position_element = player_elem.find(['span', 'div'], string=lambda s: s and s.strip() in POSITIONS.keys())
+                                    
+                                    # If we have a name, create a player record
+                                    if name_element:
+                                        player_name = name_element.text.strip()
+                                        position = position_element.text.strip() if position_element else ""
+                                        
+                                        # Create player data (all players in today's lineups are active)
+                                        player_data = {
+                                            'name': player_name,
+                                            'team': team_name,
+                                            'position': position,
+                                            'status': 'active',
+                                            'status_detail': 'Starting Lineup'
+                                        }
+                                        
+                                        players.append(player_data)
+                                        logger.info(f"Found player: {player_name} ({position}) - {team_name}")
+                                
+                                except Exception as e:
+                                    logger.error(f"Error processing player element: {str(e)}")
+                                    continue
+                
+                except Exception as e:
+                    logger.error(f"Error processing matchup {matchup_text}: {str(e)}")
+                    continue
+        
+        except Exception as e:
+            logger.error(f"Error scraping NBA.com lineups: {str(e)}")
+        
+        # Last resort: Try to directly parse based on the exact structure in the screenshot
+        if not players:
+            logger.info("Trying direct structure parsing based on the screenshot")
+            
+            try:
+                # Look for team abbreviation headings (NYK, CHA, etc.)
+                abbr_headers = soup.find_all(['div', 'h3', 'span'], string=lambda s: s and s.strip() in TEAM_ABBR_TO_NAME.keys())
+                
+                for abbr_header in abbr_headers:
+                    team_abbr = abbr_header.text.strip()
+                    team_name = self._normalize_team_name(team_abbr)
+                    
+                    # Find nearby player elements
+                    parent = abbr_header.parent
+                    
+                    # Look for orange player indicators (from screenshot)
+                    player_indicators = parent.find_all(['div', 'span'], style=lambda s: s and 'background-color' in s.lower())
+                    
+                    for indicator in player_indicators:
                         try:
-                            # Extract player name
-                            player_name_elem = player_element.find(['span', 'div', 'a'], class_=lambda c: c and ('name' in c.lower() or 'Name' in c)) or player_element
+                            # Find the player name near this indicator
+                            # Check nearby text elements for names
+                            player_parent = indicator.parent
                             
-                            player_name = player_name_elem.text.strip()
-                            if not player_name:
-                                continue
+                            # Look for text that might be a name
+                            name_elements = player_parent.find_all(['span', 'div'], string=lambda s: s and len(s.strip()) > 3 and s.strip() not in POSITIONS.keys())
                             
-                            # Look for status indicator
-                            status_elem = player_element.find(['span', 'div'], class_=lambda c: c and ('status' in c.lower() or 'Status' in c or 'injury' in c.lower() or 'Injury' in c))
-                            
-                            status_text = status_elem.text.strip() if status_elem else "Active"  # Assume active if no status found
-                            status = self._normalize_player_status(status_text)
-                            
-                            # Create player data
-                            player_data = {
-                                'name': player_name,
-                                'team': team_name,
-                                'position': "",  # Position might not be available
-                                'status': status,
-                                'status_detail': status_text
-                            }
-                            
-                            players.append(player_data)
-                            
+                            if name_elements:
+                                player_name = name_elements[0].text.strip()
+                                
+                                # Look for position marker
+                                position_element = player_parent.find(['span', 'div'], string=lambda s: s and s.strip() in POSITIONS.keys())
+                                position = position_element.text.strip() if position_element else ""
+                                
+                                # Create player record
+                                player_data = {
+                                    'name': player_name,
+                                    'team': team_name,
+                                    'position': position,
+                                    'status': 'active',
+                                    'status_detail': 'Starting Lineup'
+                                }
+                                
+                                players.append(player_data)
+                                logger.info(f"Found player (direct parsing): {player_name} ({position}) - {team_name}")
+                        
                         except Exception as e:
-                            logger.error(f"Error parsing player element: {str(e)}")
+                            logger.error(f"Error in direct parsing: {str(e)}")
                             continue
             
             except Exception as e:
-                logger.error(f"Error parsing game container: {str(e)}")
-                continue
+                logger.error(f"Error with direct structure parsing: {str(e)}")
         
         logger.info(f"Scraped {len(players)} players from NBA.com lineups")
         return players
@@ -397,48 +407,6 @@ class NBAPlayersScraper:
         
         logger.info(f"Saved {saved_count} players to database")
         return saved_count
-    
-    def update_player_statuses_from_injuries(self, injury_players: List[Dict[str, Any]]) -> int:
-        """
-        Update player statuses based on injury reports.
-        
-        Args:
-            injury_players: List of player dictionaries with injury information
-            
-        Returns:
-            Number of player statuses updated
-        """
-        updated_count = 0
-        
-        # Create a lookup dictionary for faster matching
-        player_status_lookup = {}
-        for player in injury_players:
-            key = f"{player['name'].lower()}_{player['team'].lower()}"
-            player_status_lookup[key] = player['status']
-        
-        # Get all players from the database
-        for team_name in NBA_TEAMS.keys():
-            try:
-                team_players = self.db.get_players_by_team(team_name)
-                
-                for player in team_players:
-                    player_key = f"{player['name'].lower()}_{player['team'].lower()}"
-                    
-                    if player_key in player_status_lookup:
-                        # Update player status
-                        new_status = player_status_lookup[player_key]
-                        
-                        if player['status'] != new_status:
-                            self.db.update_player_status(player['player_id'], new_status)
-                            logger.info(f"Updated {player['name']} status to {new_status}")
-                            updated_count += 1
-                
-            except Exception as e:
-                logger.error(f"Error updating players for team {team_name}: {str(e)}")
-                continue
-        
-        logger.info(f"Updated {updated_count} player statuses from injury reports")
-        return updated_count
     
     def get_team_active_players(self, team_name: str) -> List[Dict[str, Any]]:
         """
@@ -491,43 +459,25 @@ class NBAPlayersScraper:
             logger.error(f"Error getting players for game {game_id}: {str(e)}")
             return {'home_players': [], 'away_players': []}
     
-    def scrape_and_save_players(self) -> Tuple[int, int]:
+    def scrape_and_save_players(self) -> int:
         """
-        Scrape players from multiple sources and save them to the database.
+        Scrape players from NBA.com lineups and save them to the database.
         
         Returns:
-            Tuple of (players_saved, statuses_updated)
+            Number of players saved
         """
         # Initialize database if not already connected
         self.db.initialize_database()
         
-        # Get player data from both sources
-        espn_players = self.scrape_espn_injury_report()
-        nba_players = self.scrape_nba_lineups()
-        
-        # Combine player lists (prioritizing ESPN data for duplicates)
-        all_players = {}
-        
-        # Add NBA.com players first
-        for player in nba_players:
-            player_key = f"{player['name'].lower()}_{player['team'].lower()}"
-            all_players[player_key] = player
-        
-        # Add or update with ESPN players
-        for player in espn_players:
-            player_key = f"{player['name'].lower()}_{player['team'].lower()}"
-            all_players[player_key] = player
-        
-        # Convert back to list
-        combined_players = list(all_players.values())
+        # Scrape today's lineups
+        players = self.scrape_todays_lineups()
         
         # Save players to database
-        saved_count = self.save_players_to_database(combined_players)
+        saved_count = self.save_players_to_database(players)
         
-        # Update player statuses from injury reports
-        updated_count = self.update_player_statuses_from_injuries(espn_players)
+        logger.info(f"Saved {saved_count} players from today's lineups")
         
-        return (saved_count, updated_count)
+        return saved_count
 
 
 # Example usage
@@ -536,6 +486,6 @@ if __name__ == "__main__":
     scraper = NBAPlayersScraper()
     
     # Scrape and save player information
-    players_saved, statuses_updated = scraper.scrape_and_save_players()
+    players_saved = scraper.scrape_and_save_players()
     
-    print(f"Saved {players_saved} players and updated {statuses_updated} player statuses")
+    print(f"Saved {players_saved} players from today's lineups")
