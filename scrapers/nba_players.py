@@ -8,6 +8,11 @@ from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
 
 from data.database import Database
 from scrapers.nba_games import NBA_TEAMS, TEAM_ABBR_TO_NAME
@@ -39,7 +44,7 @@ POSITIONS = {
 
 class NBAPlayersScraper:
     """
-    Scrapes NBA player information and lineups exclusively from NBA.com/players/todays-lineups.
+    Scrapes NBA player information and lineups from NBA.com/players/todays-lineups using Selenium.
     """
     
     def __init__(self, db: Optional[Database] = None):
@@ -52,54 +57,67 @@ class NBAPlayersScraper:
         # Initialize database (create a new one if not provided)
         self.db = db if db else Database()
         
-        # User Agent to mimic a browser (helps avoid blocks from some websites)
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-        }
+        # User Agent to mimic a browser
+        self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36"
         
         # Delay between requests to be respectful of the servers
         self.request_delay = 2  # seconds
         
-        # NBA.com lineups URL (the only source we'll use)
+        # NBA.com lineups URL
         self.lineups_url = "https://www.nba.com/players/todays-lineups"
     
-    def _make_request(self, url: str) -> Optional[str]:
+    def _get_page_with_selenium(self, url: str) -> Optional[str]:
         """
-        Make an HTTP request with error handling and retries.
+        Load a webpage with Selenium to handle JavaScript rendering.
         
         Args:
-            url: URL to request
+            url: URL to load
             
         Returns:
             HTML content of the page or None if failed
         """
-        max_retries = 3
-        retry_delay = 5  # seconds
-        
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"Making request to: {url}")
-                response = requests.get(url, headers=self.headers, timeout=30)
-                response.raise_for_status()  # Raise an exception for HTTP errors
-                
-                # Add a delay to avoid hammering the server
-                time.sleep(self.request_delay)
-                
-                return response.text
+        try:
+            logger.info(f"Loading URL with Selenium: {url}")
             
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Request failed (attempt {attempt+1}/{max_retries}): {str(e)}")
-                
-                if attempt < max_retries - 1:
-                    logger.info(f"Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                else:
-                    logger.error(f"Max retries reached. Giving up on URL: {url}")
-                    return None
+            # Set up Chrome options
+            options = Options()
+            options.add_argument("--headless=new")  # Run in headless mode
+            options.add_argument(f"user-agent={self.user_agent}")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            
+            # Initialize Chrome driver
+            service = Service(ChromeDriverManager().install())
+            browser = webdriver.Chrome(service=service, options=options)
+            
+            # Set page load timeout
+            browser.set_page_load_timeout(30)
+            
+            # Load the page
+            browser.get(url)
+            
+            # Wait for JavaScript to load content
+            time.sleep(5)  # Adjust this wait time if needed
+            
+            try:
+                # Find the main content div to ensure content has loaded
+                root_div = browser.find_element(By.ID, "__next")
+                html_content = root_div.get_attribute("outerHTML")
+                html = f"<html><body>{html_content}</body></html>"
+            except Exception as e:
+                logger.warning(f"Could not find __next element, getting full page source: {str(e)}")
+                html = browser.page_source
+            
+            # Clean up
+            browser.quit()
+            
+            logger.info("Successfully loaded page with Selenium")
+            return html
+            
+        except Exception as e:
+            logger.error(f"Error loading page with Selenium: {str(e)}")
+            return None
     
     def _normalize_team_name(self, team_abbr: str) -> str:
         """
@@ -153,12 +171,12 @@ class NBAPlayersScraper:
     
     def scrape_todays_lineups(self) -> List[Dict[str, Any]]:
         """
-        Scrape NBA lineups from NBA.com's Today's Lineups page.
+        Scrape NBA lineups from NBA.com's Today's Lineups page using Selenium.
         
         Returns:
             List of dictionaries containing player information
         """
-        html_content = self._make_request(self.lineups_url)
+        html_content = self._get_page_with_selenium(self.lineups_url)
         if not html_content:
             logger.error("Failed to retrieve NBA.com lineups page")
             return []
@@ -166,195 +184,149 @@ class NBAPlayersScraper:
         soup = BeautifulSoup(html_content, 'html.parser')
         players = []
         
-        # Based on the screenshot, we need to look for game matchups and player listings
-        # The layout shows matchups like "NYK VS CHA", "BKN VS IND", etc.
+        # Based on the screenshot, we need to look for matchup sections like "NYK VS CHA"
         try:
-            # Find all game matchup headers
+            # Look for matchup headers - now with Selenium, we should have the full rendered page
             matchup_headers = soup.find_all(['h2', 'h3', 'div'], string=lambda s: s and re.search(r'[A-Z]{3}\s+VS\s+[A-Z]{3}', s))
             
-            # If no direct headers, look for elements with matchup class or structure
+            # Alternative approach: look for matchup headers by class
             if not matchup_headers:
-                matchup_headers = soup.find_all(['div', 'h2', 'h3'], class_=lambda c: c and ('matchup' in c.lower() or 'Matchup' in c))
+                matchup_headers = soup.find_all(['div', 'h2', 'h3'], class_=lambda c: c and ('matchup' in str(c).lower() or 'vs' in str(c).lower()))
             
-            # If still not found, look for the exact structure in the screenshot
-            if not matchup_headers:
-                # Look for elements containing team abbreviations separated by VS
-                matchup_headers = []
-                for element in soup.find_all(['div', 'h2', 'h3', 'span']):
-                    if element.text and re.search(r'[A-Z]{3}\s+VS\s+[A-Z]{3}', element.text.strip()):
-                        matchup_headers.append(element)
+            logger.info(f"Found {len(matchup_headers)} matchup headers")
             
-            logger.info(f"Found {len(matchup_headers)} game matchups")
-            
-            for matchup in matchup_headers:
+            for header in matchup_headers:
                 try:
-                    # Extract team abbreviations from matchup heading
-                    matchup_text = matchup.text.strip()
-                    teams_match = re.search(r'([A-Z]{3})\s+VS\s+([A-Z]{3})', matchup_text)
+                    # Extract team abbreviations from the header
+                    header_text = header.text.strip()
+                    teams_match = re.search(r'([A-Z]{3})\s+VS\s+([A-Z]{3})', header_text)
                     
                     if teams_match:
                         away_abbr = teams_match.group(1)
                         home_abbr = teams_match.group(2)
-                        
-                        away_team = self._normalize_team_name(away_abbr)
-                        home_team = self._normalize_team_name(home_abbr)
-                        
-                        logger.info(f"Processing matchup: {away_team} @ {home_team}")
-                        
-                        # Find the team sections for this matchup
-                        # Based on the screenshot, each matchup has two team sections with players
-                        
-                        # Find team container elements near the matchup
-                        team_containers = []
-                        
-                        # First look in the parent container
-                        parent = matchup.parent
-                        team_elements = parent.find_all(['div', 'section'], class_=lambda c: c and ('team' in str(c).lower() or 'Team' in str(c)))
-                        
-                        if team_elements and len(team_elements) >= 2:
-                            team_containers = team_elements[:2]  # Away and home team containers
+                    else:
+                        # Try alternative parsing if the first regex doesn't match
+                        # Look for any three-letter uppercase words that might be team abbreviations
+                        abbrs = re.findall(r'\b[A-Z]{3}\b', header_text)
+                        if len(abbrs) >= 2:
+                            away_abbr = abbrs[0]
+                            home_abbr = abbrs[1]
                         else:
-                            # Try looking at siblings or nearby elements
-                            # Check if there are tab elements or sections labeled with the team abbreviations
-                            away_element = parent.find(['div', 'section', 'tab'], string=lambda s: s and away_abbr in s)
-                            home_element = parent.find(['div', 'section', 'tab'], string=lambda s: s and home_abbr in s)
-                            
-                            if away_element and home_element:
-                                team_containers = [away_element, home_element]
-                            else:
-                                # Direct approach: look for the exact team abbreviations as standalone headers
-                                next_element = matchup.find_next_sibling()
-                                while next_element and len(team_containers) < 2:
-                                    if next_element.text.strip() in [away_abbr, home_abbr]:
-                                        team_containers.append(next_element)
-                                    next_element = next_element.find_next_sibling()
+                            logger.warning(f"Could not extract team abbreviations from: {header_text}")
+                            continue
+                    
+                    # Convert abbreviations to full team names
+                    away_team = self._normalize_team_name(away_abbr)
+                    home_team = self._normalize_team_name(home_abbr)
+                    
+                    logger.info(f"Processing matchup: {away_team} @ {home_team}")
+                    
+                    # Find team sections for this matchup
+                    # Based on the screenshot, each team has a column with players
+                    
+                    # The team sections could be in different structures:
+                    # 1. As tabs/tabs under the matchup header
+                    # 2. As columns under the matchup header
+                    # 3. Direct player listings
+                    
+                    # First, look for tab elements with team abbreviations
+                    team_tabs = []
+                    parent = header.parent
+                    
+                    # Look for elements containing the team abbreviations
+                    away_tab = parent.find(['div', 'button', 'span'], string=lambda s: s and away_abbr in s)
+                    home_tab = parent.find(['div', 'button', 'span'], string=lambda s: s and home_abbr in s)
+                    
+                    if away_tab and home_tab:
+                        team_tabs = [away_tab, home_tab]
+                    
+                    # Process each team
+                    teams = [(away_abbr, away_team), (home_abbr, home_team)]
+                    
+                    for idx, (team_abbr, team_name) in enumerate(teams):
+                        # Find the team section - it could be a tab content or a column
+                        team_section = None
                         
-                        # If still not found, use direct reference to the screenshot's exact structure
-                        if not team_containers or len(team_containers) < 2:
-                            # Look for container elements with team tables
-                            team_tables = parent.find_all('table')
-                            if team_tables and len(team_tables) >= 2:
-                                # Create containers from the tables
-                                team_containers = team_tables[:2]
+                        # If we found tabs, look for content associated with this tab
+                        if team_tabs and idx < len(team_tabs):
+                            tab = team_tabs[idx]
+                            # Try to find the content section for this tab
+                            # It could be a sibling or a child element
+                            team_section = tab.find_next(['div', 'section', 'ul'])
                         
-                        # Process team containers
-                        for idx, container in enumerate(team_containers[:2]):  # Process up to 2 teams
-                            team_name = away_team if idx == 0 else home_team
-                            
-                            # Find player elements in this team container
-                            # Based on the screenshot, players are listed with position (SG, SF, etc.)
-                            
-                            # Try to find player rows or elements
-                            player_elements = container.find_all(['tr', 'div', 'li'], class_=lambda c: c and ('player' in str(c).lower() or 'Player' in str(c)))
-                            
-                            # If no player elements with class, look for elements containing position abbreviations
-                            if not player_elements:
-                                for pos in POSITIONS.keys():
-                                    pos_elements = container.find_all(['span', 'div'], string=lambda s: s and s.strip() == pos)
-                                    for pos_elem in pos_elements:
-                                        # Find the parent element that represents the player
-                                        player_parent = pos_elem.parent
-                                        if player_parent and player_parent not in player_elements:
-                                            player_elements.append(player_parent)
-                            
-                            # Direct approach: Look for orange blocks that indicate players (from screenshot)
-                            if not player_elements:
-                                orange_elements = container.find_all(['div', 'span'], style=lambda s: s and 'background-color: #f60' in s.lower())
-                                for elem in orange_elements:
-                                    player_parent = elem.parent
-                                    if player_parent and player_parent not in player_elements:
-                                        player_elements.append(player_parent)
-                            
-                            # Process each player element
-                            for player_elem in player_elements:
-                                try:
-                                    # Extract player name
-                                    # Based on the screenshot format, player names are prominent
-                                    name_element = player_elem.find(['span', 'div', 'a'], class_=lambda c: c and ('name' in str(c).lower() or 'Name' in str(c)))
-                                    
-                                    # If no specific class, try to find by context (positioning near position marker)
-                                    if not name_element:
-                                        # Look for text that doesn't match position abbreviations
-                                        for text_elem in player_elem.find_all(['span', 'div', 'a']):
-                                            if text_elem.text.strip() and text_elem.text.strip() not in POSITIONS.keys():
-                                                name_element = text_elem
-                                                break
-                                    
-                                    # If still not found, check directly for a name pattern
-                                    if not name_element:
-                                        # Look for elements that match name patterns (First Last)
-                                        name_pattern = re.compile(r'[A-Z][a-z]+\s+[A-Z][a-z]+')
-                                        for text_elem in player_elem.find_all(['span', 'div', 'a']):
-                                            if text_elem.text and name_pattern.match(text_elem.text.strip()):
-                                                name_element = text_elem
-                                                break
-                                    
-                                    # Extract position
-                                    position_element = player_elem.find(['span', 'div'], string=lambda s: s and s.strip() in POSITIONS.keys())
-                                    
-                                    # If we have a name, create a player record
-                                    if name_element:
-                                        player_name = name_element.text.strip()
-                                        position = position_element.text.strip() if position_element else ""
-                                        
-                                        # Create player data (all players in today's lineups are active)
-                                        player_data = {
-                                            'name': player_name,
-                                            'team': team_name,
-                                            'position': position,
-                                            'status': 'active',
-                                            'status_detail': 'Starting Lineup'
-                                        }
-                                        
-                                        players.append(player_data)
-                                        logger.info(f"Found player: {player_name} ({position}) - {team_name}")
+                        # If no tab content found, look for columns or sections
+                        if not team_section:
+                            # Look for sections with team abbreviation or team name
+                            team_section = parent.find(['div', 'section', 'ul'], string=lambda s: s and (team_abbr in s or team_name in s))
+                        
+                        # If still not found, just search broadly around the matchup header
+                        if not team_section:
+                            # Look in surrounding elements for player listings
+                            container = parent
+                            for _ in range(3):  # Check a few levels up
+                                team_section = container.find(['div', 'section', 'ul'], class_=lambda c: c and ('team' in str(c).lower() or team_abbr.lower() in str(c).lower()))
+                                if team_section:
+                                    break
+                                container = container.parent
+                        
+                        # If we can't find a specific section, use the parent container
+                        if not team_section:
+                            team_section = parent
+                        
+                        # Now find player elements within the team section
+                        # Based on the screenshot, players have positions like SG, SF, etc.
+                        player_elements = []
+                        
+                        # Look for elements containing position abbreviations
+                        for position in POSITIONS.keys():
+                            pos_elements = team_section.find_all(['span', 'div', 'p'], string=lambda s: s and s.strip() == position)
+                            for pos_elem in pos_elements:
+                                # Each position element should have a parent that represents the player
+                                player_parent = pos_elem.parent
+                                if player_parent and player_parent not in player_elements:
+                                    player_elements.append(player_parent)
+                        
+                        # If no player elements found by position, look for player name patterns
+                        if not player_elements:
+                            # Look for name elements that match the pattern of a name (First Last)
+                            name_elements = team_section.find_all(['span', 'div', 'p', 'a'], string=lambda s: s and re.match(r'^[A-Z][a-z]+\s+[A-Z][a-z]+$', s.strip()))
+                            for name_elem in name_elements:
+                                player_parent = name_elem.parent
+                                if player_parent and player_parent not in player_elements:
+                                    player_elements.append(player_parent)
+                        
+                        # Process each player element
+                        for player_elem in player_elements:
+                            try:
+                                # Extract player name - look for prominent text that's not a position
+                                name_candidates = player_elem.find_all(['span', 'div', 'p', 'a'])
+                                player_name = None
                                 
-                                except Exception as e:
-                                    logger.error(f"Error processing player element: {str(e)}")
-                                    continue
-                
-                except Exception as e:
-                    logger.error(f"Error processing matchup {matchup_text}: {str(e)}")
-                    continue
-        
-        except Exception as e:
-            logger.error(f"Error scraping NBA.com lineups: {str(e)}")
-        
-        # Last resort: Try to directly parse based on the exact structure in the screenshot
-        if not players:
-            logger.info("Trying direct structure parsing based on the screenshot")
-            
-            try:
-                # Look for team abbreviation headings (NYK, CHA, etc.)
-                abbr_headers = soup.find_all(['div', 'h3', 'span'], string=lambda s: s and s.strip() in TEAM_ABBR_TO_NAME.keys())
-                
-                for abbr_header in abbr_headers:
-                    team_abbr = abbr_header.text.strip()
-                    team_name = self._normalize_team_name(team_abbr)
-                    
-                    # Find nearby player elements
-                    parent = abbr_header.parent
-                    
-                    # Look for orange player indicators (from screenshot)
-                    player_indicators = parent.find_all(['div', 'span'], style=lambda s: s and 'background-color' in s.lower())
-                    
-                    for indicator in player_indicators:
-                        try:
-                            # Find the player name near this indicator
-                            # Check nearby text elements for names
-                            player_parent = indicator.parent
-                            
-                            # Look for text that might be a name
-                            name_elements = player_parent.find_all(['span', 'div'], string=lambda s: s and len(s.strip()) > 3 and s.strip() not in POSITIONS.keys())
-                            
-                            if name_elements:
-                                player_name = name_elements[0].text.strip()
+                                for candidate in name_candidates:
+                                    candidate_text = candidate.text.strip()
+                                    # Skip position abbreviations
+                                    if candidate_text in POSITIONS.keys():
+                                        continue
+                                    # Skip empty or very short text
+                                    if not candidate_text or len(candidate_text) < 3:
+                                        continue
+                                    # This could be the player name
+                                    player_name = candidate_text
+                                    break
                                 
-                                # Look for position marker
-                                position_element = player_parent.find(['span', 'div'], string=lambda s: s and s.strip() in POSITIONS.keys())
+                                if not player_name:
+                                    # If we still don't have a name, use all text in the element
+                                    full_text = player_elem.text.strip()
+                                    # Remove position abbreviations
+                                    for pos in POSITIONS.keys():
+                                        full_text = full_text.replace(pos, '').strip()
+                                    player_name = full_text
+                                
+                                # Extract position
+                                position_element = player_elem.find(['span', 'div', 'p'], string=lambda s: s and s.strip() in POSITIONS.keys())
                                 position = position_element.text.strip() if position_element else ""
                                 
-                                # Create player record
+                                # Create player data (all players in today's lineups are active)
                                 player_data = {
                                     'name': player_name,
                                     'team': team_name,
@@ -364,14 +336,122 @@ class NBAPlayersScraper:
                                 }
                                 
                                 players.append(player_data)
-                                logger.info(f"Found player (direct parsing): {player_name} ({position}) - {team_name}")
+                                logger.info(f"Found player: {player_name} ({position}) - {team_name}")
+                            
+                            except Exception as e:
+                                logger.error(f"Error processing player element: {str(e)}")
+                                continue
+                
+                except Exception as e:
+                    logger.error(f"Error processing matchup header: {str(e)}")
+                    continue
+        
+        except Exception as e:
+            logger.error(f"Error scraping lineups: {str(e)}")
+        
+        # If no players found with the main approach, try a more direct approach
+        if not players:
+            logger.info("No players found with primary approach. Trying secondary approach...")
+            
+            try:
+                # Look directly for position markers and player names near them
+                position_elements = []
+                for position in POSITIONS.keys():
+                    pos_elems = soup.find_all(['span', 'div', 'p'], string=lambda s: s and s.strip() == position)
+                    position_elements.extend(pos_elems)
+                
+                logger.info(f"Found {len(position_elements)} position elements")
+                
+                for pos_elem in position_elements:
+                    try:
+                        position = pos_elem.text.strip()
                         
-                        except Exception as e:
-                            logger.error(f"Error in direct parsing: {str(e)}")
+                        # Look for team context - position elements should be under a team section
+                        team_context = None
+                        element = pos_elem
+                        for _ in range(5):  # Look up to 5 levels up
+                            if not element or element.name == 'html':
+                                break
+                            
+                            # Check if this element has a team abbreviation
+                            element_text = element.text
+                            for abbr in TEAM_ABBR_TO_NAME.keys():
+                                if abbr in element_text:
+                                    team_context = abbr
+                                    break
+                            
+                            if team_context:
+                                break
+                            
+                            element = element.parent
+                        
+                        if not team_context:
+                            # If we can't find a team context, look for VS patterns
+                            vs_elements = soup.find_all(['div', 'h2', 'h3', 'span'], string=lambda s: s and 'VS' in s)
+                            for vs_elem in vs_elements:
+                                if pos_elem in vs_elem.descendants or vs_elem in pos_elem.descendants:
+                                    teams_match = re.search(r'([A-Z]{3})\s+VS\s+([A-Z]{3})', vs_elem.text)
+                                    if teams_match:
+                                        # Determine which team by checking proximity
+                                        away_abbr = teams_match.group(1)
+                                        home_abbr = teams_match.group(2)
+                                        away_text = vs_elem.text.split('VS')[0]
+                                        home_text = vs_elem.text.split('VS')[1]
+                                        
+                                        # Check which side our position element is closer to
+                                        if position in away_text:
+                                            team_context = away_abbr
+                                        elif position in home_text:
+                                            team_context = home_abbr
+                                        else:
+                                            # Default to away team
+                                            team_context = away_abbr
+                                        
+                                        break
+                        
+                        if not team_context:
+                            logger.warning(f"Could not determine team context for position {position}")
                             continue
+                        
+                        team_name = self._normalize_team_name(team_context)
+                        
+                        # Find the player name - check sibling elements
+                        player_name = None
+                        
+                        # First check if there's a sibling with a name
+                        siblings = pos_elem.parent.contents
+                        for sibling in siblings:
+                            if hasattr(sibling, 'text') and sibling != pos_elem and sibling.text.strip() and sibling.text.strip() not in POSITIONS.keys():
+                                player_name = sibling.text.strip()
+                                break
+                        
+                        # If no name found in siblings, check parent's text
+                        if not player_name:
+                            parent_text = pos_elem.parent.text.strip()
+                            # Remove position abbreviation
+                            for pos in POSITIONS.keys():
+                                parent_text = parent_text.replace(pos, '').strip()
+                            player_name = parent_text
+                        
+                        if player_name:
+                            # Create player data
+                            player_data = {
+                                'name': player_name,
+                                'team': team_name,
+                                'position': position,
+                                'status': 'active',
+                                'status_detail': 'Starting Lineup'
+                            }
+                            
+                            players.append(player_data)
+                            logger.info(f"Found player (secondary approach): {player_name} ({position}) - {team_name}")
+                    
+                    except Exception as e:
+                        logger.error(f"Error in secondary approach: {str(e)}")
+                        continue
             
             except Exception as e:
-                logger.error(f"Error with direct structure parsing: {str(e)}")
+                logger.error(f"Error in secondary scraping approach: {str(e)}")
         
         logger.info(f"Scraped {len(players)} players from NBA.com lineups")
         return players
