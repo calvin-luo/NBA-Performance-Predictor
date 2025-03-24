@@ -17,8 +17,7 @@ from typing import List, Dict, Any, Optional
 from data.database import Database
 from reddit.connector import get_connector
 from reddit.collector import RedditCollector
-from scrapers.nba_games import NBAGamesScraper
-from scrapers.nba_players import NBAPlayersScraper
+from scrapers.nba_api_scraper import NBAApiScraper
 from analysis.sentiment import SentimentAnalyzer
 from analysis.predictor import NBAPredictor
 
@@ -40,8 +39,7 @@ def initialize_components():
     db.initialize_database()
     
     # Create instances of all components
-    game_scraper = NBAGamesScraper(db=db)
-    player_scraper = NBAPlayersScraper(db=db)
+    nba_scraper = NBAApiScraper(db=db)
     reddit_connector = get_connector()
     reddit_collector = RedditCollector(connector=reddit_connector, db=db)
     sentiment_analyzer = SentimentAnalyzer(db=db)
@@ -49,8 +47,7 @@ def initialize_components():
     
     return {
         'db': db,
-        'game_scraper': game_scraper,
-        'player_scraper': player_scraper,
+        'nba_scraper': nba_scraper,
         'reddit_connector': reddit_connector,
         'reddit_collector': reddit_collector,
         'sentiment_analyzer': sentiment_analyzer,
@@ -61,9 +58,9 @@ def initialize_components():
 def scrape_games(components, days_ahead=1):
     """Scrape NBA games for the specified number of days ahead."""
     logger.info(f"Scraping games for the next {days_ahead} days...")
-    game_scraper = components['game_scraper']
+    nba_scraper = components['nba_scraper']
     
-    game_count = game_scraper.scrape_and_save_games(days_ahead=days_ahead)
+    game_count = nba_scraper.scrape_and_save_games(days_ahead=days_ahead)
     logger.info(f"Scraped and saved {game_count} games")
     
     return game_count
@@ -72,12 +69,12 @@ def scrape_games(components, days_ahead=1):
 def scrape_players(components):
     """Scrape NBA player information and injury reports."""
     logger.info("Scraping player information...")
-    player_scraper = components['player_scraper']
+    nba_scraper = components['nba_scraper']
     
-    players_saved, statuses_updated = player_scraper.scrape_and_save_players()
-    logger.info(f"Saved {players_saved} players and updated {statuses_updated} player statuses")
+    players_saved = nba_scraper.scrape_and_save_players()
+    logger.info(f"Saved {players_saved} players")
     
-    return players_saved, statuses_updated
+    return players_saved
 
 
 def collect_reddit_data(components, days_back=1):

@@ -9,8 +9,7 @@ from data.database import Database
 from analysis.sentiment import SentimentAnalyzer
 from analysis.predictor import NBAPredictor
 from reddit.collector import RedditCollector
-from scrapers.nba_games import NBAGamesScraper
-from scrapers.nba_players import NBAPlayersScraper
+from scrapers.nba_api_scraper import NBAApiScraper
 
 # Set up logging
 logging.basicConfig(
@@ -30,8 +29,7 @@ db.initialize_database()
 sentiment_analyzer = SentimentAnalyzer(db=db)
 predictor = NBAPredictor(db=db, sentiment_analyzer=sentiment_analyzer)
 collector = RedditCollector(db=db)
-game_scraper = NBAGamesScraper(db=db)
-player_scraper = NBAPlayersScraper(db=db)
+nba_scraper = NBAApiScraper(db=db)
 
 # Team color mapping for visualization
 TEAM_COLORS = {
@@ -218,13 +216,13 @@ def refresh_data():
         
         if action == 'games' or action == 'all':
             # Scrape and save games
-            game_count = game_scraper.scrape_and_save_games(days_ahead=1)
+            game_count = nba_scraper.scrape_and_save_games(days_ahead=1)
             logger.info(f"Scraped and saved {game_count} games")
         
         if action == 'players' or action == 'all':
             # Scrape and save player data
-            players_saved, statuses_updated = player_scraper.scrape_and_save_players()
-            logger.info(f"Saved {players_saved} players and updated {statuses_updated} statuses")
+            players_saved = nba_scraper.scrape_and_save_players()
+            logger.info(f"Saved {players_saved} players")
         
         if action == 'reddit' or action == 'all':
             # Get today's games to find teams playing today
