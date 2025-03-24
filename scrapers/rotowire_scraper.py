@@ -15,7 +15,6 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 
 from data.database import Database
-from scrapers.nba_games import NBA_TEAMS, TEAM_ABBR_TO_NAME
 
 # Set up logging
 logging.basicConfig(
@@ -24,39 +23,42 @@ logging.basicConfig(
 )
 logger = logging.getLogger('scrapers.rotowire_scraper')
 
-# Map team abbreviations to full team names
-ROTOWIRE_TEAM_ABBR_MAP = {
-    'ATL': 'Atlanta Hawks',
-    'BOS': 'Boston Celtics',
-    'BKN': 'Brooklyn Nets',
-    'CHA': 'Charlotte Hornets',
-    'CHI': 'Chicago Bulls',
-    'CLE': 'Cleveland Cavaliers',
-    'DAL': 'Dallas Mavericks',
-    'DEN': 'Denver Nuggets',
-    'DET': 'Detroit Pistons',
-    'GSW': 'Golden State Warriors',
-    'HOU': 'Houston Rockets',
-    'IND': 'Indiana Pacers',
-    'LAC': 'Los Angeles Clippers',
-    'LAL': 'Los Angeles Lakers',
-    'MEM': 'Memphis Grizzlies',
-    'MIA': 'Miami Heat',
-    'MIL': 'Milwaukee Bucks',
-    'MIN': 'Minnesota Timberwolves',
-    'NOP': 'New Orleans Pelicans',
-    'NYK': 'New York Knicks',
-    'OKC': 'Oklahoma City Thunder',
-    'ORL': 'Orlando Magic',
-    'PHI': 'Philadelphia 76ers',
-    'PHX': 'Phoenix Suns',
-    'POR': 'Portland Trail Blazers',
-    'SAC': 'Sacramento Kings',
-    'SAS': 'San Antonio Spurs',
-    'TOR': 'Toronto Raptors',
-    'UTA': 'Utah Jazz',
-    'WAS': 'Washington Wizards'
+# Define NBA teams and abbreviations 
+NBA_TEAMS = {
+    "Atlanta Hawks": {"abbr": "ATL", "variants": ["hawks", "atlanta"]},
+    "Boston Celtics": {"abbr": "BOS", "variants": ["celtics", "boston"]},
+    "Brooklyn Nets": {"abbr": "BKN", "variants": ["nets", "brooklyn"]},
+    "Charlotte Hornets": {"abbr": "CHA", "variants": ["hornets", "charlotte"]},
+    "Chicago Bulls": {"abbr": "CHI", "variants": ["bulls", "chicago"]},
+    "Cleveland Cavaliers": {"abbr": "CLE", "variants": ["cavaliers", "cavs", "cleveland"]},
+    "Dallas Mavericks": {"abbr": "DAL", "variants": ["mavericks", "mavs", "dallas"]},
+    "Denver Nuggets": {"abbr": "DEN", "variants": ["nuggets", "denver"]},
+    "Detroit Pistons": {"abbr": "DET", "variants": ["pistons", "detroit"]},
+    "Golden State Warriors": {"abbr": "GSW", "variants": ["warriors", "golden state", "golden"]},
+    "Houston Rockets": {"abbr": "HOU", "variants": ["rockets", "houston"]},
+    "Indiana Pacers": {"abbr": "IND", "variants": ["pacers", "indiana"]},
+    "Los Angeles Clippers": {"abbr": "LAC", "variants": ["clippers", "la clippers"]},
+    "Los Angeles Lakers": {"abbr": "LAL", "variants": ["lakers", "la lakers"]},
+    "Memphis Grizzlies": {"abbr": "MEM", "variants": ["grizzlies", "memphis"]},
+    "Miami Heat": {"abbr": "MIA", "variants": ["heat", "miami"]},
+    "Milwaukee Bucks": {"abbr": "MIL", "variants": ["bucks", "milwaukee"]},
+    "Minnesota Timberwolves": {"abbr": "MIN", "variants": ["timberwolves", "wolves", "minnesota"]},
+    "New Orleans Pelicans": {"abbr": "NOP", "variants": ["pelicans", "new orleans"]},
+    "New York Knicks": {"abbr": "NYK", "variants": ["knicks", "new york"]},
+    "Oklahoma City Thunder": {"abbr": "OKC", "variants": ["thunder", "oklahoma city", "oklahoma"]},
+    "Orlando Magic": {"abbr": "ORL", "variants": ["magic", "orlando"]},
+    "Philadelphia 76ers": {"abbr": "PHI", "variants": ["76ers", "sixers", "philadelphia"]},
+    "Phoenix Suns": {"abbr": "PHX", "variants": ["suns", "phoenix"]},
+    "Portland Trail Blazers": {"abbr": "POR", "variants": ["trail blazers", "blazers", "portland"]},
+    "Sacramento Kings": {"abbr": "SAC", "variants": ["kings", "sacramento"]},
+    "San Antonio Spurs": {"abbr": "SAS", "variants": ["spurs", "san antonio"]},
+    "Toronto Raptors": {"abbr": "TOR", "variants": ["raptors", "toronto"]},
+    "Utah Jazz": {"abbr": "UTA", "variants": ["jazz", "utah"]},
+    "Washington Wizards": {"abbr": "WAS", "variants": ["wizards", "washington"]}
 }
+
+# Create mapping from abbreviation to team name
+TEAM_ABBR_TO_NAME = {team_data["abbr"]: team_name for team_name, team_data in NBA_TEAMS.items()}
 
 # Player status mapping
 PLAYER_STATUS_MAP = {
@@ -151,12 +153,8 @@ class RotowireScraper:
         Returns:
             Full team name
         """
-        # First try the Rotowire mapping
-        if team_abbr in ROTOWIRE_TEAM_ABBR_MAP:
-            return ROTOWIRE_TEAM_ABBR_MAP[team_abbr]
-        
-        # Fallback to the project's mapping
-        return TEAM_ABBR_TO_NAME.get(team_abbr, team_abbr)
+        # Use the mapping from abbreviation to team name
+        return TEAM_ABBR_TO_NAME.get(team_abbr.upper(), team_abbr)
     
     def _parse_player_status(self, status_text: str) -> str:
         """
