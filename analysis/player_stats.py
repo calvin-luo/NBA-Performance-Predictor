@@ -2,7 +2,7 @@ import logging
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Any, Optional, Tuple
-from nba_api.stats.endpoints import playergamelog, playercareerstats, playerdashboardbygeneralsplits
+from nba_api.stats.endpoints import playergamelog, playercareerstats
 from nba_api.stats.static import players
 
 # Set up logging
@@ -19,15 +19,10 @@ class PlayerStatsCollector:
     Focused on retrieving time-series compatible metrics for ARIMA modeling.
     """
     
-    def __init__(self, db=None):
-        """
-        Initialize the PlayerStatsCollector.
-        
-        Args:
-            db: Database instance (optional, for storing retrieved stats)
-        """
-        self.db = db
-        
+    def __init__(self):
+        """Initialize the PlayerStatsCollector."""
+        pass
+    
     def get_player_id(self, player_name: str) -> Optional[str]:
         """
         Get NBA API player ID from player name.
@@ -292,91 +287,11 @@ class PlayerStatsCollector:
             
         logger.info(f"Retrieved stats for {len(team_stats)} players from {team_name}")
         return team_stats
-    
-    def get_game_players_stats(self, game_id: str) -> Dict[str, Dict[str, pd.DataFrame]]:
-        """
-        Retrieve stats for all players in a game from the database.
-        
-        Args:
-            game_id: Game ID
-            
-        Returns:
-            Dictionary with team names as keys and team player stats as values
-        """
-        if not self.db:
-            logger.error("Database connection not available")
-            return {}
-            
-        game_stats = {}
-        
-        try:
-            # Get game details
-            game = self.db.get_game(game_id)
-            if not game:
-                logger.error(f"Game not found: {game_id}")
-                return {}
-                
-            # Get players for the game
-            players = self.db.get_players_for_game(game_id)
-            
-            # Group players by team
-            home_players = [p for p in players if p['team'] == game['home_team']]
-            away_players = [p for p in players if p['team'] == game['away_team']]
-            
-            # Get stats for each team
-            game_stats[game['home_team']] = self.get_team_players_stats(game['home_team'], home_players)
-            game_stats[game['away_team']] = self.get_team_players_stats(game['away_team'], away_players)
-            
-            return game_stats
-            
-        except Exception as e:
-            logger.error(f"Error getting game players stats for {game_id}: {str(e)}")
-            return {}
-    
-    def collect_stats_for_todays_games(self) -> int:
-        """
-        Collect historical stats for all players in today's games.
-        
-        Returns:
-            Number of games processed
-        """
-        if not self.db:
-            logger.error("Database connection not available")
-            return 0
-            
-        processed_count = 0
-        
-        try:
-            # Get today's games from database
-            todays_games = self.db.get_todays_games()
-            
-            for game in todays_games:
-                game_id = game['game_id']
-                
-                # Get player stats for this game
-                game_stats = self.get_game_players_stats(game_id)
-                
-                # Store the stats in the database
-                if game_stats:
-                    for team_name, team_stats in game_stats.items():
-                        for player_name, player_stats in team_stats.items():
-                            # Store player stats
-                            if self.db.store_player_stats(player_name, player_stats):
-                                logger.info(f"Stored historical stats for {player_name}")
-                
-                processed_count += 1
-                logger.info(f"Processed stats for game: {game_id}")
-                
-            return processed_count
-            
-        except Exception as e:
-            logger.error(f"Error collecting stats for today's games: {str(e)}")
-            return processed_count
 
 
 # Example usage when run as script
 if __name__ == "__main__":
-    # Create the player stats collector (without DB for testing)
+    # Create the player stats collector
     collector = PlayerStatsCollector()
     
     # Test with a single player
