@@ -4,7 +4,6 @@ import time
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
-from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -298,57 +297,69 @@ class RotowireScraper:
         starting_lineup = []
         injured_players = []
         
-        # Find the "MAY NOT PLAY" section title if it exists
-        may_not_play_title = lineup_list.find('li', class_='lineup__title', string='MAY NOT PLAY')
+        # Find all elements in order (both players and section headers)
+        all_elements = lineup_list.find_all('li')
         
-        # Find all player elements in the lineup list
-        player_elements = lineup_list.find_all('li', class_='lineup__player')
+        # Flag to track when we're in the injury section
+        in_injury_section = False
         
-        for player_elem in player_elements:
-            # Skip if element doesn't have necessary structure
-            if not player_elem:
+        # Process elements in the order they appear in the HTML
+        for elem in all_elements:
+            # Skip the status header (Confirmed Lineup)
+            if 'lineup__status' in elem.get('class', []):
                 continue
                 
-            # Get position
-            pos_elem = player_elem.find('div', class_='lineup__pos')
-            position = pos_elem.text.strip() if pos_elem else ""
-            
-            # Get player name
-            player_link = player_elem.find('a')
-            if not player_link:
+            # Check if this is the "MAY NOT PLAY" section header
+            if 'lineup__title' in elem.get('class', []) and elem.text.strip() == 'MAY NOT PLAY':
+                in_injury_section = True
                 continue
+            
+            # Process player elements
+            if 'lineup__player' in elem.get('class', []):
+                # Get position
+                pos_elem = elem.find('div', class_='lineup__pos')
+                position = pos_elem.text.strip() if pos_elem else ""
                 
-            player_name = player_link.text.strip()
-            player_id = None
-            
-            # Try to extract player ID from the href
-            player_href = player_link.get('href', '')
-            player_id_match = re.search(r'/player/([^/]+)-(\d+)$', player_href)
-            if player_id_match:
-                player_id = player_id_match.group(2)
-            
-            # Get player status
-            status_elem = player_elem.find('span', class_='lineup__inj')
-            status_text = status_elem.text.strip() if status_elem else None
-            status = self._parse_player_status(status_text)
-            
-            # Skip players marked as OFS (out for season) if hidden
-            if status_text == 'OFS' and 'hide' in player_elem.get('class', []):
-                continue
-            
-            # Create player data
-            player_data = {
-                'name': player_name,
-                'position': position,
-                'status': status,
-                'player_id': player_id
-            }
-            
-            # Determine if player is in the "MAY NOT PLAY" section
-            if may_not_play_title and player_elem.find_previous('li', class_='lineup__title', string='MAY NOT PLAY'):
-                injured_players.append(player_data)
-            else:
-                starting_lineup.append(player_data)
+                # Get player name
+                player_link = elem.find('a')
+                if not player_link:
+                    continue
+                    
+                player_name = player_link.text.strip()
+                
+                # Get player ID from href if available
+                player_id = None
+                player_href = player_link.get('href', '')
+                player_id_match = re.search(r'/player/([^/]+)-(\d+)$', player_href)
+                if player_id_match:
+                    player_id = player_id_match.group(2)
+                
+                # Get player status
+                status_elem = elem.find('span', class_='lineup__inj')
+                status_text = status_elem.text.strip() if status_elem else None
+                status = self._parse_player_status(status_text)
+                
+                # Skip hidden OFS players
+                if status_text == 'OFS' and 'hide' in elem.get('class', []):
+                    continue
+                
+                # Create player data
+                player_data = {
+                    'name': player_name,
+                    'position': position,
+                    'status': status,
+                    'player_id': player_id
+                }
+                
+                # Add to appropriate list based on current section
+                if in_injury_section:
+                    injured_players.append(player_data)
+                else:
+                    # Check if the player has "is-pct-play-100" class
+                    if 'is-pct-play-100' in elem.get('class', []):
+                        starting_lineup.append(player_data)
+                    else:
+                        injured_players.append(player_data)
         
         return starting_lineup, injured_players
     
@@ -467,19 +478,17 @@ class RotowireScraper:
                 
                 if odds_elem:
                     # Extract line (moneyline)
-                    line_elem = odds_elem.find('span', class_='draftkings')
-                    if line_elem:
-                        game_odds['line'] = line_elem.text.strip()
+                    line_elems = odds_elem.find_all('span', class_='draftkings')
+                    if len(line_elems) > 0:
+                        game_odds['line'] = line_elems[0].text.strip()
                     
                     # Extract spread
-                    spread_elem = odds_elem.find_all('span', class_='draftkings')
-                    if len(spread_elem) > 1:
-                        game_odds['spread'] = spread_elem[1].text.strip()
+                    if len(line_elems) > 1:
+                        game_odds['spread'] = line_elems[1].text.strip()
                     
                     # Extract over/under
-                    ou_elem = odds_elem.find_all('span', class_='draftkings')
-                    if len(ou_elem) > 2:
-                        game_odds['over_under'] = ou_elem[2].text.strip()
+                    if len(line_elems) > 2:
+                        game_odds['over_under'] = line_elems[2].text.strip()
                 
                 # Create full game data dictionary
                 game_data = {

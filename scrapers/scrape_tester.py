@@ -12,7 +12,6 @@ import os
 import sys
 import logging
 from typing import Dict, List, Any
-from pprint import pprint
 
 # Add the parent directory to the path so we can import our modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,45 +28,12 @@ logging.basicConfig(
 logger = logging.getLogger('scrape_tester')
 
 
-def print_separator(title: str = None) -> None:
-    """Print a separator line with optional title."""
-    if title:
-        print("\n" + "=" * 30 + f" {title} " + "=" * 30)
-    else:
-        print("\n" + "=" * 80)
-
-
-def print_game_info(game: Dict[str, Any]) -> None:
-    """Print game information in a readable format."""
-    print(f"{game['away_team']} ({game.get('away_record', '')}) @ {game['home_team']} ({game.get('home_record', '')})")
-    print(f"Game ID: {game['game_id']}")
-    print(f"Date: {game['game_date']} | Time: {game['game_time']}")
-    
-    # Print venue if available
-    if game.get('venue') and game['venue'] != "Unknown":
-        print(f"Venue: {game['venue']}")
-    
-    # Print referees if available
-    if game.get('referees'):
-        print(f"Referees: {', '.join(game['referees'])}")
-    
-    # Print odds if available
-    if game.get('odds'):
-        odds = game['odds']
-        if odds.get('line'):
-            print(f"Line: {odds['line']}")
-        if odds.get('spread'):
-            print(f"Spread: {odds['spread']}")
-        if odds.get('over_under'):
-            print(f"Over/Under: {odds['over_under']}")
-
-
 def print_lineup(team_name: str, lineup: List[Dict[str, Any]]) -> None:
-    """Print team lineup in a readable format."""
-    print(f"\n{team_name} Starting Lineup:")
-    print("------------------------------")
+    """Print team lineup in a simple format."""
+    print(f"Lineup {team_name}:")
+    
     if not lineup:
-        print("No lineup data available")
+        print("  No lineup data available")
         return
     
     # Sort lineup by position
@@ -77,28 +43,15 @@ def print_lineup(team_name: str, lineup: List[Dict[str, Any]]) -> None:
         key=lambda x: position_order.get(x.get('position', ''), 99)
     )
     
+    # Print player names with positions
     for player in sorted_lineup:
-        status_indicator = ""
-        if player.get('status') != 'active':
-            status_indicator = f" ({player['status'].upper()})"
-        
-        print(f"{player.get('position', 'N/A'):2} | {player.get('name', 'Unknown')}{status_indicator}")
-
-
-def print_injuries(team_name: str, injuries: List[Dict[str, Any]]) -> None:
-    """Print team injuries in a readable format."""
-    if not injuries:
-        return
-    
-    print(f"\n{team_name} Injury Report:")
-    print("---------------------------")
-    for player in injuries:
-        print(f"{player.get('position', 'N/A'):2} | {player.get('name', 'Unknown')} - {player.get('status', 'Unknown').upper()}")
+        status = "" if player.get('status') == 'active' else f" ({player['status']})"
+        print(f"  {player.get('position', 'N/A')} - {player.get('name', 'Unknown')}{status}")
 
 
 def main():
     """Main function to test the scrapers."""
-    print_separator("NBA SCRAPER TEST")
+    print("\n=== NBA SCRAPER TEST ===")
     print("Testing NBA API and Rotowire scrapers for today's games and lineups")
     
     # Create a temporary database for testing
@@ -109,53 +62,55 @@ def main():
     nba_scraper = NBAApiScraper(db=db)
     rotowire_scraper = RotowireScraper(db=db)
     
-    # Scrape NBA API games
-    print_separator("NBA API GAMES")
+    # Get games from NBA API
     try:
         nba_games = nba_scraper.scrape_nba_schedule(days_ahead=0)
-        print(f"Found {len(nba_games)} games from NBA API")
-        
-        # Print each game
-        for i, game in enumerate(nba_games):
-            print_separator(f"Game {i+1}")
-            print_game_info(game)
+        print(f"\nFound {len(nba_games)} games from NBA API")
     except Exception as e:
         logger.error(f"Error scraping NBA API: {str(e)}")
         print(f"Error scraping NBA API: {str(e)}")
+        nba_games = []
     
-    # Scrape Rotowire lineups
-    print_separator("ROTOWIRE LINEUPS")
+    # Get lineups from Rotowire
     try:
         rotowire_games = rotowire_scraper.scrape_rotowire_lineups(date_type='today')
-        print(f"Found {len(rotowire_games)} games on Rotowire")
-        
-        # Print each game with lineups
-        for i, game in enumerate(rotowire_games):
-            print_separator(f"Game {i+1}")
-            print_game_info(game)
-            
-            # Print lineups
-            print_lineup(game['away_team'], game['away_lineup'])
-            print_lineup(game['home_team'], game['home_lineup'])
-            
-            # Print injuries
-            print_injuries(game['away_team'], game['away_injuries'])
-            print_injuries(game['home_team'], game['home_injuries'])
+        print(f"Found {len(rotowire_games)} games on Rotowire\n")
     except Exception as e:
         logger.error(f"Error scraping Rotowire: {str(e)}")
         print(f"Error scraping Rotowire: {str(e)}")
+        rotowire_games = []
     
-    # Print summary
-    print_separator("SUMMARY")
-    print(f"NBA API games: {len(nba_games) if 'nba_games' in locals() else 0}")
-    print(f"Rotowire games: {len(rotowire_games) if 'rotowire_games' in locals() else 0}")
+    # Display games and lineups from Rotowire (which has complete data)
+    for i, game in enumerate(rotowire_games):
+        print(f"\nGame {i+1}: {game['away_team']} vs {game['home_team']} ({game['game_time']})")
+        
+        # Print away team lineup
+        print_lineup(game['away_team'], game['away_lineup'])
+        
+        # Print home team lineup
+        print_lineup(game['home_team'], game['home_lineup'])
+        
+        # Print injuries if there are any
+        if game.get('away_injuries') and len(game['away_injuries']) > 0:
+            print(f"\n{game['away_team']} Injuries:")
+            for player in game['away_injuries']:
+                print(f"  {player.get('name', 'Unknown')} ({player.get('status', 'unknown')})")
+                
+        if game.get('home_injuries') and len(game['home_injuries']) > 0:
+            print(f"\n{game['home_team']} Injuries:")
+            for player in game['home_injuries']:
+                print(f"  {player.get('name', 'Unknown')} ({player.get('status', 'unknown')})")
     
     # Check if game counts match
-    if 'nba_games' in locals() and 'rotowire_games' in locals():
+    if nba_games and rotowire_games:
+        print("\n=== SUMMARY ===")
+        print(f"NBA API games: {len(nba_games)}")
+        print(f"Rotowire games: {len(rotowire_games)}")
+        
         if len(nba_games) != len(rotowire_games):
             print("\nWARNING: Game count mismatch between NBA API and Rotowire!")
             
-            # Try to identify mismatched games
+            # Identify mismatched games
             nba_game_ids = {game['game_id'] for game in nba_games}
             rotowire_game_ids = {game['game_id'] for game in rotowire_games}
             
@@ -167,34 +122,16 @@ def main():
                 for game_id in missing_from_nba:
                     game = next((g for g in rotowire_games if g['game_id'] == game_id), None)
                     if game:
-                        print(f"- {game['away_team']} @ {game['home_team']} ({game['game_date']})")
+                        print(f"- {game['away_team']} @ {game['home_team']}")
             
             if missing_from_rotowire:
                 print("\nGames from NBA API but not on Rotowire:")
                 for game_id in missing_from_rotowire:
                     game = next((g for g in nba_games if g['game_id'] == game_id), None)
                     if game:
-                        print(f"- {game['away_team']} @ {game['home_team']} ({game['game_date']})")
+                        print(f"- {game['away_team']} @ {game['home_team']}")
         else:
             print("\nSUCCESS: Game counts match between NBA API and Rotowire!")
-            
-    # Bonus: Try NBA API's combined scraper function
-    print_separator("NBA API COMBINED SCRAPER (GAMES + LINEUPS)")
-    try:
-        # The NBAApiScraper also has functionality to scrape lineups
-        player_data = nba_scraper.scrape_todays_lineups()
-        print(f"Found {len(player_data)} players from NBA API's lineup scraper")
-        
-        # Display sample of first few players
-        if player_data:
-            print("\nSample players:")
-            for i, player in enumerate(player_data[:5]):
-                print(f"{i+1}. {player.get('name', 'Unknown')} ({player.get('team', 'Unknown')}) - {player.get('position', 'N/A')} - {player.get('status', 'Unknown')}")
-            if len(player_data) > 5:
-                print(f"... and {len(player_data) - 5} more players")
-    except Exception as e:
-        logger.error(f"Error using NBA API's lineup scraper: {str(e)}")
-        print(f"Error using NBA API's lineup scraper: {str(e)}")
 
 
 if __name__ == "__main__":
