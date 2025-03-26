@@ -1,4 +1,5 @@
 # NBA-Performance-Predictor (WIP)
+by: Calvin Luo
 
 ## Objective
 A web application that predicts NBA game outcomes based on players' past performances.
