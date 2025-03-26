@@ -20,9 +20,8 @@ graph TD
     subgraph "Data Analysis Layer"
         C -->|Retrieve Lineups| D[Player Stats Collector]
         D -->|Retrieve Player History| E1[NBA API]
-        E1 -->|Historical Stats| D
-        D -->|Store Historical Stats| C
-        C -->|Retrieve All Data| F[Time Series Models]
+        E1 -->|Return Historical Stats| D
+        D -->|Provide Processed Stats| F[Time Series Models]
     end
 
     subgraph "Prediction Layer"
