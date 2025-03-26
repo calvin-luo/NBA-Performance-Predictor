@@ -17,7 +17,7 @@ from typing import List, Dict, Any, Optional
 from data.database import Database
 from reddit.connector import get_connector
 from reddit.collector import RedditCollector
-from scrapers.nba_api_scraper import NBAApiScraper
+from scrapers.game_scraper import NBAApiScraper
 from analysis.sentiment import SentimentAnalyzer
 from analysis.predictor import NBAPredictor
 

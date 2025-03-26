@@ -14,7 +14,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger('scrapers.nba_api')
+logger = logging.getLogger('scrapers.game_scraper')
 
 # NBA team name mappings (official team name to abbreviation and common variants)
 NBA_TEAMS = {

@@ -9,7 +9,7 @@ from data.database import Database
 from analysis.sentiment import SentimentAnalyzer
 from analysis.predictor import NBAPredictor
 from reddit.collector import RedditCollector
-from scrapers.nba_api_scraper import NBAApiScraper
+from scrapers.game_scraper import NBAApiScraper
 
 # Set up logging
 logging.basicConfig(

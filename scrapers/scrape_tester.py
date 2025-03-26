@@ -17,8 +17,8 @@ from typing import Dict, List, Any
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.database import Database
-from scrapers.nba_api_scraper import NBAApiScraper
-from scrapers.rotowire_scraper import RotowireScraper
+from scrapers.game_scraper import NBAApiScraper
+from scrapers.player_scraper import RotowireScraper
 
 # Set up logging
 logging.basicConfig(
