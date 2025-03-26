@@ -284,6 +284,74 @@ class RotowireScraper:
             today = datetime.today()
             return today.strftime("%Y-%m-%d")
     
+    def _extract_lineup_players(self, lineup_list: Any, team_name: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Extract player information from a lineup list.
+        
+        Args:
+            lineup_list: BeautifulSoup element containing the lineup list
+            team_name: Name of the team
+            
+        Returns:
+            Tuple of (starting_lineup, injured_players)
+        """
+        starting_lineup = []
+        injured_players = []
+        
+        # Find the "MAY NOT PLAY" section title if it exists
+        may_not_play_title = lineup_list.find('li', class_='lineup__title', string='MAY NOT PLAY')
+        
+        # Find all player elements in the lineup list
+        player_elements = lineup_list.find_all('li', class_='lineup__player')
+        
+        for player_elem in player_elements:
+            # Skip if element doesn't have necessary structure
+            if not player_elem:
+                continue
+                
+            # Get position
+            pos_elem = player_elem.find('div', class_='lineup__pos')
+            position = pos_elem.text.strip() if pos_elem else ""
+            
+            # Get player name
+            player_link = player_elem.find('a')
+            if not player_link:
+                continue
+                
+            player_name = player_link.text.strip()
+            player_id = None
+            
+            # Try to extract player ID from the href
+            player_href = player_link.get('href', '')
+            player_id_match = re.search(r'/player/([^/]+)-(\d+)$', player_href)
+            if player_id_match:
+                player_id = player_id_match.group(2)
+            
+            # Get player status
+            status_elem = player_elem.find('span', class_='lineup__inj')
+            status_text = status_elem.text.strip() if status_elem else None
+            status = self._parse_player_status(status_text)
+            
+            # Skip players marked as OFS (out for season) if hidden
+            if status_text == 'OFS' and 'hide' in player_elem.get('class', []):
+                continue
+            
+            # Create player data
+            player_data = {
+                'name': player_name,
+                'position': position,
+                'status': status,
+                'player_id': player_id
+            }
+            
+            # Determine if player is in the "MAY NOT PLAY" section
+            if may_not_play_title and player_elem.find_previous('li', class_='lineup__title', string='MAY NOT PLAY'):
+                injured_players.append(player_data)
+            else:
+                starting_lineup.append(player_data)
+        
+        return starting_lineup, injured_players
+    
     def scrape_rotowire_lineups(self, date_type: str = 'today') -> List[Dict[str, Any]]:
         """
         Scrape NBA lineups from Rotowire.
@@ -309,9 +377,9 @@ class RotowireScraper:
         # Extract the current game date
         game_date = self._extract_game_date(html_content)
         
-        # Find all game lineup containers
+        # Find all game lineup containers (excluding promo/ad containers)
         game_containers = soup.find_all('div', class_='lineup', attrs={'data-lnum': True})
-        game_containers = [g for g in game_containers if not 'is-picks' in g.get('class', [])]
+        game_containers = [g for g in game_containers if 'is-nba' in g.get('class', []) and not 'is-picks' in g.get('class', [])]
         
         logger.info(f"Found {len(game_containers)} game containers")
         
@@ -322,8 +390,14 @@ class RotowireScraper:
                 game_time_str = game_time_elem.text.strip() if game_time_elem else "7:00 PM ET"
                 game_time = self._parse_time(game_time_str)
                 
+                # Find the team boxes
+                box = game_container.find('div', class_='lineup__box')
+                if not box:
+                    logger.warning("Could not find lineup box. Skipping game.")
+                    continue
+                
                 # Get team abbreviations
-                team_elements = game_container.find_all('div', class_='lineup__abbr')
+                team_elements = box.find_all('div', class_='lineup__abbr')
                 if len(team_elements) != 2:
                     logger.warning(f"Expected 2 teams, found {len(team_elements)}. Skipping game.")
                     continue
@@ -339,22 +413,52 @@ class RotowireScraper:
                 game_id = self._generate_game_id(home_team, away_team, game_date)
                 
                 # Extract records if available
-                record_elements = game_container.find_all('span', class_='lineup__wl')
+                record_elements = box.find_all('span', class_='lineup__wl')
                 away_record = record_elements[0].text.strip() if len(record_elements) > 0 else ""
                 home_record = record_elements[1].text.strip() if len(record_elements) > 1 else ""
                 
                 # Get venue if available
                 venue = "Unknown"  # Default venue
                 
+                # Find the main element containing lineups
+                lineup_main = box.find('div', class_='lineup__main')
+                if not lineup_main:
+                    logger.warning("Could not find lineup main element. Skipping game.")
+                    continue
+                
+                # Find lineup lists (away and home)
+                away_list = lineup_main.find('ul', class_=lambda c: c and 'lineup__list' in c and 'is-visit' in c)
+                home_list = lineup_main.find('ul', class_=lambda c: c and 'lineup__list' in c and 'is-home' in c)
+                
+                # Initialize team lineups
+                away_lineup = []
+                home_lineup = []
+                away_injuries = []
+                home_injuries = []
+                
+                # Extract away team lineup
+                if away_list:
+                    away_lineup, away_injuries = self._extract_lineup_players(away_list, away_team)
+                    logger.info(f"Extracted {len(away_lineup)} players and {len(away_injuries)} injuries for {away_team}")
+                else:
+                    logger.warning(f"Could not find away team lineup list for {away_team}")
+                
+                # Extract home team lineup
+                if home_list:
+                    home_lineup, home_injuries = self._extract_lineup_players(home_list, home_team)
+                    logger.info(f"Extracted {len(home_lineup)} players and {len(home_injuries)} injuries for {home_team}")
+                else:
+                    logger.warning(f"Could not find home team lineup list for {home_team}")
+                
                 # Extract referees if available
-                refs_elem = game_container.find('div', class_='lineup__umpire')
+                refs_elem = box.find('div', class_='lineup__umpire')
                 referees = []
                 if refs_elem:
                     ref_links = refs_elem.find_all('a')
                     referees = [ref.text.strip() for ref in ref_links]
                 
                 # Extract odds if available
-                odds_elem = game_container.find('div', class_='lineup__odds')
+                odds_elem = box.find('div', class_='lineup__odds')
                 game_odds = {
                     'line': None,
                     'spread': None,
@@ -376,123 +480,6 @@ class RotowireScraper:
                     ou_elem = odds_elem.find_all('span', class_='draftkings')
                     if len(ou_elem) > 2:
                         game_odds['over_under'] = ou_elem[2].text.strip()
-                
-                # Extract lineups
-                lineup_lists = game_container.find_all('ul', class_='lineup__list')
-                away_lineup = []
-                home_lineup = []
-                
-                for i, lineup_list in enumerate(lineup_lists):
-                    # Skip if it's not the main lineup lists (might be extras)
-                    if i >= 2:
-                        break
-                    
-                    # Determine if home or away team
-                    is_home = 'is-home' in lineup_list.get('class', [])
-                    
-                    # Find all players
-                    player_elems = lineup_list.find_all('li', class_='lineup__player')
-                    
-                    for player_elem in player_elems:
-                        # Skip players in the "MAY NOT PLAY" section (they'll be processed separately)
-                        if player_elem.find_previous('li', class_='lineup__title', string='MAY NOT PLAY'):
-                            continue
-                        
-                        # Get position
-                        pos_elem = player_elem.find('div', class_='lineup__pos')
-                        position = pos_elem.text.strip() if pos_elem else ""
-                        
-                        # Get player name
-                        player_link = player_elem.find('a')
-                        if not player_link:
-                            continue
-                            
-                        player_name = player_link.text.strip()
-                        player_id = None
-                        
-                        # Try to extract player ID from the href
-                        player_href = player_link.get('href', '')
-                        player_id_match = re.search(r'/player/([^/]+)-(\d+)$', player_href)
-                        if player_id_match:
-                            player_id = player_id_match.group(2)
-                        
-                        # Get player status
-                        status_elem = player_elem.find('span', class_='lineup__inj')
-                        status_text = status_elem.text.strip() if status_elem else None
-                        status = self._parse_player_status(status_text)
-                        
-                        # Add player to appropriate lineup
-                        player_data = {
-                            'name': player_name,
-                            'position': position,
-                            'status': status,
-                            'player_id': player_id
-                        }
-                        
-                        if is_home:
-                            home_lineup.append(player_data)
-                        else:
-                            away_lineup.append(player_data)
-                
-                # Extract injured players
-                away_injuries = []
-                home_injuries = []
-                
-                for i, lineup_list in enumerate(lineup_lists):
-                    if i >= 2:
-                        break
-                    
-                    # Determine if home or away team
-                    is_home = 'is-home' in lineup_list.get('class', [])
-                    
-                    # Find the "MAY NOT PLAY" section
-                    may_not_play_title = lineup_list.find('li', class_='lineup__title', string='MAY NOT PLAY')
-                    
-                    if may_not_play_title:
-                        # Find all players in this section
-                        injury_section = may_not_play_title.find_next_siblings('li', class_='lineup__player')
-                        
-                        for player_elem in injury_section:
-                            # Get player name
-                            player_link = player_elem.find('a')
-                            if not player_link:
-                                continue
-                                
-                            player_name = player_link.text.strip()
-                            player_id = None
-                            
-                            # Try to extract player ID from the href
-                            player_href = player_link.get('href', '')
-                            player_id_match = re.search(r'/player/([^/]+)-(\d+)$', player_href)
-                            if player_id_match:
-                                player_id = player_id_match.group(2)
-                            
-                            # Get position
-                            pos_elem = player_elem.find('div', class_='lineup__pos')
-                            position = pos_elem.text.strip() if pos_elem else ""
-                            
-                            # Get injury status
-                            status_elem = player_elem.find('span', class_='lineup__inj')
-                            status_text = status_elem.text.strip() if status_elem else None
-                            
-                            # Skip players marked as OFS (out for season) as they're hidden
-                            if status_text == 'OFS' and 'hide' in player_elem.get('class', []):
-                                continue
-                                
-                            status = self._parse_player_status(status_text)
-                            
-                            # Add injured player to appropriate list
-                            injury_data = {
-                                'name': player_name,
-                                'position': position,
-                                'status': status,
-                                'player_id': player_id
-                            }
-                            
-                            if is_home:
-                                home_injuries.append(injury_data)
-                            else:
-                                away_injuries.append(injury_data)
                 
                 # Create full game data dictionary
                 game_data = {
@@ -620,14 +607,3 @@ class RotowireScraper:
         saved_count = self.save_lineups_to_database(games)
         
         return saved_count
-
-
-# Example usage
-if __name__ == "__main__":
-    # Set up scraper
-    scraper = RotowireScraper()
-    
-    # Scrape and save today's lineups
-    num_games = scraper.scrape_and_save_lineups(date_type='today')
-    
-    print(f"Scraped and saved {num_games} games from Rotowire")
