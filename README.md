@@ -4,7 +4,6 @@
 A web application that predicts NBA game outcomes based on players' past performances.
 
 ## Data Flow
-
 ```mermaid
 graph TD
     subgraph "Data Collection Layer"
