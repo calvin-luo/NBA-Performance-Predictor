@@ -9,10 +9,6 @@ nba_api>=1.2.0
 # Database
 SQLAlchemy>=1.4.41
 
-# Reddit API
-praw>=7.6.1
-prawcore>=2.3.0
-
 # Natural Language Processing
 nltk>=3.7
 vaderSentiment>=3.3.2

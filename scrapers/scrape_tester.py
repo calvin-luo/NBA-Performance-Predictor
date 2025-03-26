@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NBA Sentiment Predictor - Scraper Testing Script
+NBA Stats Predictor - Scraper Testing Script
 
 This script tests the NBA API scraper and Rotowire scraper by:
 1. Fetching today's NBA games from the NBA API
@@ -16,7 +16,7 @@ from typing import Dict, List, Any
 # Add the parent directory to the path so we can import our modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.database import Database
+# Import scrapers directly
 from scrapers.game_scraper import NBAApiScraper
 from scrapers.player_scraper import RotowireScraper
 
@@ -54,13 +54,9 @@ def main():
     print("\n=== NBA SCRAPER TEST ===")
     print("Testing NBA API and Rotowire scrapers for today's games and lineups")
     
-    # Create a temporary database for testing
-    db = Database(db_path=":memory:")
-    db.initialize_database()
-    
-    # Initialize scrapers
-    nba_scraper = NBAApiScraper(db=db)
-    rotowire_scraper = RotowireScraper(db=db)
+    # Initialize scrapers without database dependency
+    nba_scraper = NBAApiScraper(db=None)
+    rotowire_scraper = RotowireScraper(db=None)
     
     # Get games from NBA API
     try:
