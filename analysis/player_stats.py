@@ -1,6 +1,8 @@
 import logging
 import numpy as np
 import pandas as pd
+import time
+import random
 from typing import Dict, List, Any, Optional, Tuple
 from nba_api.stats.endpoints import playergamelog, playercareerstats
 from nba_api.stats.static import players
@@ -17,11 +19,66 @@ class PlayerStatsCollector:
     """
     Collects and processes historical player statistics using the NBA API.
     Focused on retrieving time-series compatible metrics for ARIMA modeling.
+    
+    Implements progressive delays and backoff strategy to handle rate limiting.
     """
     
     def __init__(self):
         """Initialize the PlayerStatsCollector."""
-        pass
+        # Request counter to track API calls
+        self.request_count = 0
+        # Initial delay between requests (seconds)
+        self.base_delay = 1.0
+        # Maximum delay to use (seconds)
+        self.max_delay = 5.0
+        # Factor by which delay increases after each request
+        self.delay_factor = 1.05
+        # Current delay time
+        self.current_delay = self.base_delay
+        # Last request timestamp
+        self.last_request_time = 0
+    
+    def _wait_between_requests(self):
+        """
+        Implements a progressive delay strategy to avoid rate limiting.
+        - Initial small delay (self.base_delay)
+        - Gradually increasing delay based on request count
+        - Random jitter to prevent synchronized requests
+        """
+        # Calculate time since last request
+        now = time.time()
+        time_since_last = now - self.last_request_time
+        
+        # If we've already waited longer than needed, don't wait more
+        if self.last_request_time > 0 and time_since_last > self.current_delay:
+            pass
+        else:
+            # Add a small random jitter (±10%) to avoid request synchronization
+            jitter = self.current_delay * random.uniform(-0.1, 0.1)
+            delay = max(0, self.current_delay + jitter - time_since_last)
+            
+            if delay > 0:
+                logger.debug(f"Waiting {delay:.2f}s before next request (total requests: {self.request_count})")
+                time.sleep(delay)
+        
+        # Increment request counter
+        self.request_count += 1
+        
+        # Update delay for next request (capped at max_delay)
+        self.current_delay = min(
+            self.max_delay, 
+            self.base_delay * (self.delay_factor ** (self.request_count // 10))
+        )
+        
+        # Update last request timestamp
+        self.last_request_time = time.time()
+    
+    def _reset_delay(self):
+        """Reset delay to initial value after a successful batch of requests."""
+        if self.request_count > 20:  # Only reset if we've made a significant number of requests
+            logger.info(f"Resetting delay after {self.request_count} requests")
+            self.request_count = 0
+            self.current_delay = self.base_delay
     
     def get_player_id(self, player_name: str) -> Optional[str]:
         """
@@ -34,6 +91,9 @@ class PlayerStatsCollector:
             Player ID as string or None if not found
         """
         try:
+            # Wait before making request
+            self._wait_between_requests()
+            
             # Search for player by name
             player_dict = players.find_players_by_full_name(player_name)
             
@@ -42,6 +102,10 @@ class PlayerStatsCollector:
             
             # If full name search fails, try last name
             last_name = player_name.split()[-1]
+            
+            # Wait before making another request
+            self._wait_between_requests()
+            
             player_dict = players.find_players_by_last_name(last_name)
             
             if player_dict and len(player_dict) > 0:
@@ -58,6 +122,8 @@ class PlayerStatsCollector:
             
         except Exception as e:
             logger.error(f"Error getting player ID for {player_name}: {str(e)}")
+            # Implement exponential backoff for failures
+            self.current_delay = min(self.max_delay, self.current_delay * 2)
             return None
     
     def get_recent_game_logs(self, player_name: str, num_games: int = 30) -> Optional[pd.DataFrame]:
@@ -88,6 +154,9 @@ class PlayerStatsCollector:
             else:
                 season = f"{current_year}-{str(current_year+1)[-2:]}"
             
+            # Wait before making request
+            self._wait_between_requests()
+            
             # Get game logs for most recent season
             game_logs = playergamelog.PlayerGameLog(
                 player_id=player_id,
@@ -98,6 +167,10 @@ class PlayerStatsCollector:
             # If we don't have enough games from current season, get previous season too
             if len(df) < num_games:
                 prev_season = f"{int(season.split('-')[0])-1}-{int(season.split('-')[0])%100:02d}"
+                
+                # Wait before making another request
+                self._wait_between_requests()
+                
                 prev_logs = playergamelog.PlayerGameLog(
                     player_id=player_id,
                     season=prev_season
@@ -118,6 +191,8 @@ class PlayerStatsCollector:
             
         except Exception as e:
             logger.error(f"Error retrieving game logs for {player_name}: {str(e)}")
+            # Implement exponential backoff for failures
+            self.current_delay = min(self.max_delay, self.current_delay * 2)
             return None
     
     def calculate_advanced_metrics(self, game_logs: pd.DataFrame) -> pd.DataFrame:
@@ -268,7 +343,7 @@ class PlayerStatsCollector:
         """
         team_stats = {}
         
-        for player in lineup:
+        for i, player in enumerate(lineup):
             player_name = player.get('name')
             if not player_name:
                 continue
@@ -285,6 +360,10 @@ class PlayerStatsCollector:
             if player_stats is not None and not player_stats.empty:
                 team_stats[player_name] = player_stats
             
+            # Reset delay periodically to adapt to changing conditions
+            if (i + 1) % 5 == 0:
+                self._reset_delay()
+        
         logger.info(f"Retrieved stats for {len(team_stats)} players from {team_name}")
         return team_stats
 
