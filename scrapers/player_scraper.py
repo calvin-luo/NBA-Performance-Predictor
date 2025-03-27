@@ -4,6 +4,7 @@ import time
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
+import pytz
 
 import requests
 from bs4 import BeautifulSoup
@@ -94,6 +95,9 @@ class RotowireScraper:
         # Rotowire URLs
         self.lineups_url = "https://www.rotowire.com/basketball/nba-lineups.php"
         self.tomorrow_url = "https://www.rotowire.com/basketball/nba-lineups.php?date=tomorrow"
+        
+        # Use Eastern Time since that's the NBA's reference timezone
+        self.timezone = pytz.timezone('US/Eastern')
     
     def _get_page_with_selenium(self, url: str) -> Optional[str]:
         """
@@ -237,6 +241,23 @@ class RotowireScraper:
             logger.error(f"Error parsing time string '{time_str}': {str(e)}")
             return "19:00"  # Default to 7 PM as fallback
     
+    def _get_current_date(self) -> str:
+        """
+        Get current date in Eastern Time (NBA's reference timezone).
+        
+        Returns:
+            Current date string in YYYY-MM-DD format
+        """
+        # Get current time in Eastern timezone (NBA's reference)
+        eastern_now = datetime.now(self.timezone)
+        
+        # If it's before 6 AM ET, we're likely looking for yesterday's games
+        # that are ongoing or about to finish
+        if eastern_now.hour < 6:
+            eastern_now = eastern_now - timedelta(days=1)
+            
+        return eastern_now.strftime("%Y-%m-%d")
+    
     def _extract_game_date(self, html_content: str) -> str:
         """
         Extract the current game date from the page.
@@ -274,14 +295,12 @@ class RotowireScraper:
                     return f"{year}-{month:02d}-{day:02d}"
             
             # Fallback to current date
-            today = datetime.today()
-            return today.strftime("%Y-%m-%d")
+            return self._get_current_date()
             
         except Exception as e:
             logger.error(f"Error extracting game date: {str(e)}")
             # Fallback to current date
-            today = datetime.today()
-            return today.strftime("%Y-%m-%d")
+            return self._get_current_date()
     
     def _extract_lineup_players(self, lineup_list: Any, team_name: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
@@ -385,8 +404,16 @@ class RotowireScraper:
         soup = BeautifulSoup(html_content, 'html.parser')
         all_games = []
         
-        # Extract the current game date
+        # Extract the current game date from the page
         game_date = self._extract_game_date(html_content)
+        
+        # Verify if the date matches today
+        today_date = self._get_current_date()
+        if date_type == 'today' and game_date != today_date:
+            logger.warning(f"Rotowire 'today' page shows date {game_date}, but current date is {today_date}")
+            logger.info(f"Using current date: {today_date}")
+            # Override with today's date
+            game_date = today_date
         
         # Find all game lineup containers (excluding promo/ad containers)
         game_containers = soup.find_all('div', class_='lineup', attrs={'data-lnum': True})
@@ -557,12 +584,12 @@ class RotowireScraper:
                     logger.info(f"Inserted game: {game['game_id']}")
                 
                 # Process players from lineups
-                self._process_players(game['home_team'], game['home_lineup'])
-                self._process_players(game['away_team'], game['away_lineup'])
+                self._process_players(game['home_team'], game['home_lineup'], game['game_id'])
+                self._process_players(game['away_team'], game['away_lineup'], game['game_id'])
                 
                 # Process injured players
-                self._process_players(game['home_team'], game['home_injuries'])
-                self._process_players(game['away_team'], game['away_injuries'])
+                self._process_players(game['home_team'], game['home_injuries'], game['game_id'])
+                self._process_players(game['away_team'], game['away_injuries'], game['game_id'])
                 
                 saved_count += 1
                 
@@ -573,13 +600,14 @@ class RotowireScraper:
         logger.info(f"Saved {saved_count} games to database")
         return saved_count
     
-    def _process_players(self, team: str, players: List[Dict[str, Any]]) -> None:
+    def _process_players(self, team: str, players: List[Dict[str, Any]], game_id: str) -> None:
         """
         Process and save players to the database.
         
         Args:
             team: Team name
             players: List of player dictionaries
+            game_id: Game ID for linking players to games
         """
         for player in players:
             try:
@@ -587,7 +615,9 @@ class RotowireScraper:
                 player_data = {
                     'name': player['name'],
                     'team': team,
-                    'status': player['status']
+                    'position': player.get('position', ''),
+                    'status': player.get('status', 'active'),
+                    'game_id': game_id
                 }
                 
                 # Insert player
