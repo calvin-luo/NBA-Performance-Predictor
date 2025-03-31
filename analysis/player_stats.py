@@ -3,9 +3,11 @@ import numpy as np
 import pandas as pd
 import time
 import random
+import re
 from typing import Dict, List, Any, Optional, Tuple
 from nba_api.stats.endpoints import playergamelog, playercareerstats
 from nba_api.stats.static import players
+from fuzzywuzzy import process, fuzz
 
 # Set up logging
 logging.basicConfig(
@@ -37,6 +39,8 @@ class PlayerStatsCollector:
         self.current_delay = self.base_delay
         # Last request timestamp
         self.last_request_time = 0
+        # Cache for player name to ID mapping
+        self.player_id_cache = {}
     
     def _wait_between_requests(self):
         """
@@ -80,42 +84,149 @@ class PlayerStatsCollector:
             self.request_count = 0
             self.current_delay = self.base_delay
     
-    def get_player_id(self, player_name: str) -> Optional[str]:
+    def _is_abbreviated_name(self, name: str) -> bool:
         """
-        Get NBA API player ID from player name.
+        Check if a name appears to be abbreviated (e.g., "B. Carrington").
         
         Args:
-            player_name: Player's full name
+            name: Player name to check
+            
+        Returns:
+            True if name appears to be abbreviated, False otherwise
+        """
+        # Common patterns for abbreviated names
+        patterns = [
+            r'^[A-Z]\.\s+[A-Za-z]+$',  # B. Carrington
+            r'^[A-Z]\s+[A-Za-z]+$',    # B Carrington
+            r'^[A-Z]\.[A-Z]\.\s+[A-Za-z]+$',  # D.J. Augustin
+        ]
+        
+        return any(re.match(pattern, name) for pattern in patterns)
+    
+    def _extract_name_parts(self, name: str) -> Tuple[str, str]:
+        """
+        Extract first and last name parts, handling abbreviated first names.
+        
+        Args:
+            name: Player name (e.g., "B. Carrington" or "LeBron James")
+            
+        Returns:
+            Tuple of (first_name_or_initial, last_name)
+        """
+        parts = name.split()
+        if len(parts) < 2:
+            return "", name  # If just one name, assume it's the last name
+        
+        # Handle potential middle names/initials by combining all but last part
+        last_name = parts[-1]
+        first_parts = ' '.join(parts[:-1])
+        
+        return first_parts, last_name
+    
+    def _get_all_players(self):
+        """
+        Get a list of all NBA players for fuzzy matching.
+        
+        Returns:
+            List of all NBA players
+        """
+        self._wait_between_requests()
+        return players.get_players()
+    
+    def get_player_id(self, player_name: str) -> Optional[str]:
+        """
+        Get NBA API player ID from player name, using fuzzy matching and
+        pattern recognition to handle abbreviated names.
+        
+        Args:
+            player_name: Player's full or abbreviated name
             
         Returns:
             Player ID as string or None if not found
         """
+        # First check if we've already looked up this player
+        if player_name in self.player_id_cache:
+            return self.player_id_cache[player_name]
+        
         try:
-            # Wait before making request
+            # Method 1: Try direct lookup first (fastest)
             self._wait_between_requests()
+            direct_match = players.find_players_by_full_name(player_name)
+            if direct_match and len(direct_match) > 0:
+                self.player_id_cache[player_name] = direct_match[0]['id']
+                logger.info(f"Direct match found for: {player_name}")
+                return direct_match[0]['id']
             
-            # Search for player by name
-            player_dict = players.find_players_by_full_name(player_name)
+            # Extract first and last names
+            first_part, last_name = self._extract_name_parts(player_name)
             
-            if player_dict and len(player_dict) > 0:
-                return player_dict[0]['id']
-            
-            # If full name search fails, try last name
-            last_name = player_name.split()[-1]
-            
-            # Wait before making another request
-            self._wait_between_requests()
-            
-            player_dict = players.find_players_by_last_name(last_name)
-            
-            if player_dict and len(player_dict) > 0:
-                # Find closest match if multiple results
-                for player in player_dict:
-                    if player_name.lower() in player['full_name'].lower():
-                        return player['id']
+            # Method 2: If we have an abbreviated name, try finding by last name + initial
+            if self._is_abbreviated_name(player_name):
+                # Extract initial from the abbreviated name
+                initial = first_part[0].upper() if first_part else ""
                 
-                # If no close match, return first result
-                return player_dict[0]['id']
+                if initial and last_name:
+                    logger.info(f"Trying to match abbreviated name: {player_name} (Initial: {initial}, Last: {last_name})")
+                    
+                    # Get all players with the same last name
+                    self._wait_between_requests()
+                    last_name_matches = players.find_players_by_last_name(last_name)
+                    
+                    if last_name_matches:
+                        # Filter to those whose first name starts with the initial
+                        initial_matches = [
+                            player for player in last_name_matches 
+                            if player['first_name'] and player['first_name'][0].upper() == initial
+                        ]
+                        
+                        if initial_matches:
+                            if len(initial_matches) == 1:
+                                # If exactly one match, use it
+                                player_id = initial_matches[0]['id']
+                                self.player_id_cache[player_name] = player_id
+                                logger.info(f"Matched abbreviated name {player_name} to {initial_matches[0]['full_name']}")
+                                return player_id
+                            else:
+                                # If multiple matches, get the most recent/active player
+                                logger.info(f"Multiple initial matches for {player_name}, using most recently active")
+                                # Using the first result as default NBA API behavior (usually returns most relevant first)
+                                player_id = initial_matches[0]['id']
+                                self.player_id_cache[player_name] = player_id
+                                return player_id
+            
+            # Method 3: Fuzzy matching as fallback
+            # Get all players for fuzzy matching (only when needed)
+            all_nba_players = self._get_all_players()
+            player_names = [p['full_name'] for p in all_nba_players]
+            
+            # Get a list of best matches using fuzzywuzzy
+            matches = process.extract(
+                player_name,
+                player_names,
+                scorer=fuzz.token_sort_ratio,  # This works well for names in different orders
+                limit=5
+            )
+            
+            # Check match quality
+            if matches and matches[0][1] > 75:  # 75% confidence threshold
+                best_match = matches[0][0]
+                logger.info(f"Fuzzy matched {player_name} to {best_match} with score {matches[0][1]}")
+                
+                # Get player ID for best match
+                matched_player = next(p for p in all_nba_players if p['full_name'] == best_match)
+                player_id = matched_player['id']
+                
+                # Cache this match for future lookups
+                self.player_id_cache[player_name] = player_id
+                return player_id
+            
+            # Last resort - try just the last name
+            self._wait_between_requests()
+            last_name_only = players.find_players_by_last_name(last_name)
+            if last_name_only and len(last_name_only) > 0:
+                logger.warning(f"Falling back to last name only for {player_name}, found {last_name_only[0]['full_name']}")
+                self.player_id_cache[player_name] = last_name_only[0]['id']
+                return last_name_only[0]['id']
             
             logger.warning(f"Could not find player ID for: {player_name}")
             return None
@@ -379,4 +490,12 @@ if __name__ == "__main__":
     
     if stats is not None:
         print(f"\nStats for {player_name}:")
+        print(stats[['GAME_DATE', 'FG_PCT', 'PTS_PER_MIN', 'PLUS_MINUS', 'GAME_SCORE']].head())
+        
+    # Test with an abbreviated name
+    abbreviated_name = "L. James"
+    stats = collector.get_player_stats(abbreviated_name, num_games=5)
+    
+    if stats is not None:
+        print(f"\nSuccessfully matched abbreviated name and got stats for {abbreviated_name}:")
         print(stats[['GAME_DATE', 'FG_PCT', 'PTS_PER_MIN', 'PLUS_MINUS', 'GAME_SCORE']].head())
