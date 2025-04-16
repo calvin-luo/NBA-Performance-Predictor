@@ -67,6 +67,8 @@ class PlayerStatsCollector:
         self._all_nba_players = None
         # Season tracking for consistent retrieval
         self._current_season = self._get_current_season()
+        # Default minimum games for reliable analysis
+        self.min_games_for_analysis = 5
     
     def _get_current_season(self):
         """
@@ -465,6 +467,7 @@ class PlayerStatsCollector:
     def get_recent_game_logs(self, player_name: str, num_games: int = 30) -> Optional[pd.DataFrame]:
         """
         Retrieve recent game logs for a player.
+        Handles rookies and players with limited games by retrieving all available games.
         
         Args:
             player_name: Player's full name
@@ -505,12 +508,24 @@ class PlayerStatsCollector:
                 # Combine current and previous season
                 df = pd.concat([df, prev_df])
             
-            # Take only requested number of games
-            df = df.head(num_games)
-            
+            # For rookies and players with limited games, use what we have
             if len(df) == 0:
                 logger.warning(f"No game logs found for player: {player_name}")
                 return None
+            elif len(df) < num_games:
+                # We have some games but fewer than requested
+                logger.info(f"Found only {len(df)} games for {player_name} (requested {num_games})")
+                
+                # Check if we have minimum games needed for time series analysis
+                if len(df) < self.min_games_for_analysis:
+                    logger.warning(
+                        f"Player {player_name} has only {len(df)} games, which is below the "
+                        f"minimum threshold of {self.min_games_for_analysis} for reliable analysis."
+                    )
+                    # Still return what we have - the caller can decide whether to use it
+            else:
+                # Take only requested number of games if we have enough
+                df = df.head(num_games)
                 
             return df
             
@@ -626,22 +641,26 @@ class PlayerStatsCollector:
                 # Get overall usage rate from official metrics
                 try:
                     # Note: Official metrics use USG_PCT instead of USG_RATE
+                    # NBA API returns this as decimal (0.271) rather than percentage (27.1%)
                     usage_pct = official_metrics['USG_PCT'].iloc[0]
                     
-                    # Apply official usage as a baseline with game-to-game variation
-                    # We're creating realistic variation around the average usage
+                    # Convert from decimal to percentage (0.271 -> 27.1)
                     base_usage = float(usage_pct) * 100
                     
-                    # Create game-specific variations: actual usage varies by about ±20%
-                    # We use the player's points as a proxy for usage in a specific game
-                    avg_pts = df['PTS'].mean()
+                    # Create game-specific variations around the average usage
+                    # We're creating realistic variation around the average usage
                     
                     # Calculate game-specific usage adjustment factor
-                    df['USG_RATE'] = np.where(
-                        avg_pts > 0,
-                        base_usage * (0.8 + 0.4 * (df['PTS'] / avg_pts)),
-                        base_usage
-                    )
+                    avg_pts = df['PTS'].mean() if len(df) > 0 else 0
+                    
+                    if avg_pts > 0:
+                        # Calculate a multiplicative factor based on points relative to average
+                        # This creates variation while keeping the overall average close to official rate
+                        df['USG_RATE'] = base_usage * (0.8 + 0.4 * (df['PTS'] / avg_pts))
+                    else:
+                        # If no points data, just use the official rate
+                        df['USG_RATE'] = base_usage
+                    
                     # Ensure usage stays in a reasonable range (5% to 45%)
                     df['USG_RATE'] = df['USG_RATE'].clip(5, 45)
                     
@@ -649,7 +668,11 @@ class PlayerStatsCollector:
                 except (KeyError, IndexError, ValueError) as e:
                     logger.warning(f"Could not get official USG_PCT: {e}. Using calculated value.")
                     # Fallback to calculated value
-                    df['USG_RATE'] = df['FGA'] / df['MINUTES_PLAYED'] * 50  # Approx. scale to realistic values
+                    df['USG_RATE'] = np.where(
+                        df['MINUTES_PLAYED'] > 0,
+                        df['FGA'] / df['MINUTES_PLAYED'] * 50,  # Scale to realistic values
+                        20  # Default middle-range value
+                    )
                     df['USG_RATE'] = df['USG_RATE'].clip(5, 45)  # Keep within realistic bounds
                 
                 # Get offensive and defensive ratings from official metrics
@@ -658,15 +681,15 @@ class PlayerStatsCollector:
                     def_rtg = official_metrics['DEF_RATING'].iloc[0]
                     
                     # Apply official ratings as baselines with game-specific variations
-                    avg_plus_minus = df['PLUS_MINUS'].mean()
+                    avg_plus_minus = df['PLUS_MINUS'].mean() if len(df) > 0 else 0
                     
                     # For offensive rating, adjust based on points scored relative to average
-                    avg_pts = df['PTS'].mean()
-                    df['OFF_RATING'] = np.where(
-                        avg_pts > 0,
-                        float(off_rtg) * (0.9 + 0.2 * (df['PTS'] / avg_pts)),
-                        float(off_rtg)
-                    )
+                    avg_pts = df['PTS'].mean() if len(df) > 0 else 0
+                    
+                    if avg_pts > 0:
+                        df['OFF_RATING'] = float(off_rtg) * (0.9 + 0.2 * (df['PTS'] / avg_pts))
+                    else:
+                        df['OFF_RATING'] = float(off_rtg)
                     
                     # For defensive rating, adjust based on plus/minus
                     # Better plus/minus suggests better defense in that game
@@ -681,11 +704,12 @@ class PlayerStatsCollector:
                     logger.warning(f"Could not get official ratings: {e}. Using calculated values.")
                     # Fallback to calculated approximations
                     # Simplified Offensive Rating (points per possession * 100)
-                    df['OFF_RATING'] = np.where(df['POSS'] > 0, 100 * df['PTS'] / df['POSS'], 0)
+                    df['OFF_RATING'] = np.where(df['POSS'] > 0, 100 * df['PTS'] / df['POSS'], 100)
                     # Defensive Rating approximation
                     df['DEF_RATING'] = 100  # League average baseline
-                    # Adjust based on defensive stats
-                    df['DEF_RATING'] -= df['STL'] + df['BLK'] * 0.5 - df['PF'] * 0.25
+                    # Adjust based on defensive stats and plus/minus
+                    df['DEF_RATING'] += np.where(df['PLUS_MINUS'] > 0, -5, 5)  # Better/worse defense
+                    df['DEF_RATING'] -= (df['STL'] + df['BLK'] * 0.5 - df['PF'] * 0.25) / 2  # Impact of defensive stats
                     # Keep in realistic range (85-120)
                     df['DEF_RATING'] = df['DEF_RATING'].clip(85, 120)
             else:
@@ -693,16 +717,21 @@ class PlayerStatsCollector:
                 logger.warning("No official metrics available. Using calculated approximations.")
                 
                 # Usage Rate approximation
-                df['USG_RATE'] = df['FGA'] / df['MINUTES_PLAYED'] * 50  # Scale to realistic values
+                df['USG_RATE'] = np.where(
+                    df['MINUTES_PLAYED'] > 0,
+                    df['FGA'] / df['MINUTES_PLAYED'] * 50,  # Scale to realistic values
+                    20  # Default middle-range value
+                )
                 df['USG_RATE'] = df['USG_RATE'].clip(5, 45)  # Keep within realistic bounds
                 
                 # Simplified Offensive Rating (points per possession * 100)
-                df['OFF_RATING'] = np.where(df['POSS'] > 0, 100 * df['PTS'] / df['POSS'], 0)
+                df['OFF_RATING'] = np.where(df['POSS'] > 0, 100 * df['PTS'] / df['POSS'], 100)
                 
                 # Defensive Rating approximation
                 df['DEF_RATING'] = 100  # League average baseline
-                # Adjust based on defensive stats
-                df['DEF_RATING'] -= df['STL'] + df['BLK'] * 0.5 - df['PF'] * 0.25
+                # Adjust based on defensive stats and plus/minus
+                df['DEF_RATING'] += np.where(df['PLUS_MINUS'] > 0, -5, 5)  # Better/worse defense
+                df['DEF_RATING'] -= (df['STL'] + df['BLK'] * 0.5 - df['PF'] * 0.25) / 2  # Impact of defensive stats
                 # Keep in realistic range (85-120)
                 df['DEF_RATING'] = df['DEF_RATING'].clip(85, 120)
             
@@ -727,10 +756,11 @@ class PlayerStatsCollector:
         """
         Retrieve and process player stats for time series analysis.
         Uses official NBA advanced metrics where possible.
+        Handles rookies and players with limited games appropriately.
         
         Args:
             player_name: Player's full name
-            num_games: Number of recent games to retrieve
+            num_games: Number of recent games to retrieve (will use all available if fewer)
             
         Returns:
             DataFrame with time series compatible stats or None if retrieval fails
