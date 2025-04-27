@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Players - Stat Lemon{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Compare Players</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row justify-content-center mb-5">
+    <div class="col-md-10">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Compare NBA Players</h4>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Select two players to compare their stats and performance projections.</p>
+                
+                <form action="{{ url_for('compare_results') }}" method="post" class="mt-4">
+                    <div class="row mb-4">
+                        <div class="col-md-5">
+                            <label for="player1" class="form-label">First Player</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <input type="text" class="form-control player-autocomplete" id="player1" name="player1" placeholder="Enter player name" required
+                                       value="{{ request.args.get('player1', '') }}">
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-2 d-flex align-items-end justify-content-center">
+                            <div class="text-center">
+                                <span class="fw-bold fs-5">VS</span>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-5">
+                            <label for="player2" class="form-label">Second Player</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <input type="text" class="form-control player-autocomplete" id="player2" name="player2" placeholder="Enter player name" required
+                                       value="{{ request.args.get('player2', '') }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label for="opponent" class="form-label">Against Team (Optional)</label>
+                            <select class="form-select" id="opponent" name="opponent">
+                                <option value="">Any Opponent</option>
+                                <!-- List of NBA teams will be populated with JavaScript -->
+                            </select>
+                            <div class="form-text">See how these players perform against a specific team.</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="days_ahead" class="form-label">Prediction Time Frame</label>
+                            <select class="form-select" id="days_ahead" name="days_ahead">
+                                <option value="1">Next Game</option>
+                                <option value="7">Next Week</option>
+                                <option value="30">Next Month</option>
+                            </select>
+                            <div class="form-text">How far into the future to project performance.</div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mt-4">
+                        <button type="submit" class="btn btn-primary px-5">Compare Players</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-5">
+    <div class="col-md-12">
+        <h3 class="h4 mb-4">Popular Comparisons</h3>
+        <div class="row row-cols-1 row-cols-md-3 g-4">
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="d-flex justify-content-around mb-3">
+                            <div class="player-avatar">
+                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                    <i class="fas fa-user fa-2x text-secondary"></i>
+                                </div>
+                                <p class="mt-2 mb-0">LeBron James</p>
+                            </div>
+                            <div class="vs-badge d-flex align-items-center">
+                                <span class="badge bg-secondary px-3">VS</span>
+                            </div>
+                            <div class="player-avatar">
+                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                    <i class="fas fa-user fa-2x text-secondary"></i>
+                                </div>
+                                <p class="mt-2 mb-0">Kevin Durant</p>
+                            </div>
+                        </div>
+                        <a href="{{ url_for('compare_results') }}?player1=LeBron James&player2=Kevin Durant" class="btn btn-sm btn-outline-primary mt-2">View Comparison</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="d-flex justify-content-around mb-3">
+                            <div class="player-avatar">
+                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                    <i class="fas fa-user fa-2x text-secondary"></i>
+                                </div>
+                                <p class="mt-2 mb-0">Stephen Curry</p>
+                            </div>
+                            <div class="vs-badge d-flex align-items-center">
+                                <span class="badge bg-secondary px-3">VS</span>
+                            </div>
+                            <div class="player-avatar">
+                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                    <i class="fas fa-user fa-2x text-secondary"></i>
+                                </div>
+                                <p class="mt-2 mb-0">Damian Lillard</p>
+                            </div>
+                        </div>
+                        <a href="{{ url_for('compare_results') }}?player1=Stephen Curry&player2=Damian Lillard" class="btn btn-sm btn-outline-primary mt-2">View Comparison</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <div class="d-flex justify-content-around mb-3">
+                            <div class="player-avatar">
+                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                    <i class="fas fa-user fa-2x text-secondary"></i>
+                                </div>
+                                <p class="mt-2 mb-0">Nikola Jokić</p>
+                            </div>
+                            <div class="vs-badge d-flex align-items-center">
+                                <span class="badge bg-secondary px-3">VS</span>
+                            </div>
+                            <div class="player-avatar">
+                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                    <i class="fas fa-user fa-2x text-secondary"></i>
+                                </div>
+                                <p class="mt-2 mb-0">Joel Embiid</p>
+                            </div>
+                        </div>
+                        <a href="{{ url_for('compare_results') }}?player1=Nikola Jokić&player2=Joel Embiid" class="btn btn-sm btn-outline-primary mt-2">View Comparison</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h4>About Player Comparison</h4>
+                <p>The Stat Lemon player comparison tool uses advanced time series analysis to compare NBA players across multiple metrics:</p>
+                <ul>
+                    <li><strong>Points Per Minute:</strong> Scoring production normalized for minutes played</li>
+                    <li><strong>True Shooting Percentage:</strong> Efficiency metric that incorporates free throws and three-pointers</li>
+                    <li><strong>Plus/Minus:</strong> Point differential when the player is on the court</li>
+                    <li><strong>Game Score:</strong> Single number that attempts to capture a player's overall productivity</li>
+                    <li><strong>Advanced Metrics:</strong> Including Offensive and Defensive ratings</li>
+                </ul>
+                <p>Our predictions use ARIMA/SARIMA models trained on each player's historical performance data, with adjustments for matchup-specific factors.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // NBA Teams list
+    const nbaTeams = [
+        "Atlanta Hawks", "Boston Celtics", "Brooklyn Nets", "Charlotte Hornets",
+        "Chicago Bulls", "Cleveland Cavaliers", "Dallas Mavericks", "Denver Nuggets",
+        "Detroit Pistons", "Golden State Warriors", "Houston Rockets", "Indiana Pacers",
+        "Los Angeles Clippers", "Los Angeles Lakers", "Memphis Grizzlies", "Miami Heat",
+        "Milwaukee Bucks", "Minnesota Timberwolves", "New Orleans Pelicans", "New York Knicks",
+        "Oklahoma City Thunder", "Orlando Magic", "Philadelphia 76ers", "Phoenix Suns",
+        "Portland Trail Blazers", "Sacramento Kings", "San Antonio Spurs", "Toronto Raptors",
+        "Utah Jazz", "Washington Wizards"
+    ];
+    
+    $(document).ready(function() {
+        // Populate teams dropdown
+        let teamOptions = '<option value="">Any Opponent</option>';
+        nbaTeams.forEach(team => {
+            teamOptions += `<option value="${team}">${team}</option>`;
+        });
+        $('#opponent').html(teamOptions);
+        
+        // Initialize player autocomplete
+        $('.player-autocomplete').autocomplete({
+            source: function(request, response) {
+                $.getJSON("/api/search_player", { q: request.term }, function(data) {
+                    response(data);
+                });
+            },
+            minLength: 2
+        });
+    });
+</script>
+{% endblock %}
