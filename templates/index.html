@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Stat Lemon - Fantasy Basketball Sandbox{% endblock %}
+
+{% block content %}
+<div class="row align-items-center py-5">
+    <div class="col-md-6">
+        <h1 class="display-4 fw-bold">Welcome to Stat Lemon</h1>
+        <p class="lead">The fantasy basketball sandbox that predicts NBA player performance using advanced time series analysis.</p>
+        <p>Compare players, build dream lineups, simulate matchups, and explore performance projections backed by data science.</p>
+        <div class="d-grid gap-2 d-md-flex justify-content-md-start">
+            <a href="{{ url_for('compare_form') }}" class="btn btn-primary btn-lg px-4 me-md-2">Compare Players</a>
+            <a href="{{ url_for('lineup_builder') }}" class="btn btn-outline-secondary btn-lg px-4">Build Lineup</a>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <img src="{{ url_for('static', filename='img/basketball-hero.svg') }}" class="img-fluid" alt="Basketball analytics illustration">
+    </div>
+</div>
+
+<hr class="my-5">
+
+<!-- Features Section -->
+<div class="row g-4 py-5">
+    <div class="col-12">
+        <h2 class="text-center mb-5">What You Can Do With Stat Lemon</h2>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <i class="fas fa-chart-line fa-3x mb-3 text-primary"></i>
+                <h3 class="card-title h5">Player Projections</h3>
+                <p class="card-text">Explore detailed performance projections for any NBA player using advanced time series models.</p>
+                <a href="#" class="btn btn-sm btn-outline-primary">Learn More</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <i class="fas fa-users fa-3x mb-3 text-primary"></i>
+                <h3 class="card-title h5">Dream Teams</h3>
+                <p class="card-text">Build your fantasy lineup and see how players would perform together based on complementary skills.</p>
+                <a href="{{ url_for('lineup_builder') }}" class="btn btn-sm btn-outline-primary">Try Builder</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body text-center">
+                <i class="fas fa-trophy fa-3x mb-3 text-primary"></i>
+                <h3 class="card-title h5">Matchup Simulator</h3>
+                <p class="card-text">Simulate games between any two teams and see projected outcomes with statistical confidence.</p>
+                <a href="{{ url_for('matchup_simulator') }}" class="btn btn-sm btn-outline-primary">Simulate Now</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<hr class="my-5">
+
+<!-- Today's Games Section -->
+<div class="row py-5">
+    <div class="col-12">
+        <h2 class="mb-4">Today's Games</h2>
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Away Team</th>
+                                <th></th>
+                                <th>Home Team</th>
+                                <th>Prediction</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="today-games">
+                            <!-- This will be populated with JavaScript -->
+                            <tr>
+                                <td colspan="6" class="text-center py-3">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading today's games...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-end">
+                    <a href="{{ url_for('schedule') }}" class="btn btn-outline-primary">View Full Schedule</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<hr class="my-5">
+
+<!-- How It Works Section -->
+<div class="row py-5">
+    <div class="col-12 text-center mb-4">
+        <h2>How Stat Lemon Works</h2>
+        <p class="lead">Powered by advanced time series analysis and machine learning</p>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="text-center mb-3">
+            <div class="bg-primary text-white rounded-circle d-inline-flex justify-content-center align-items-center" style="width: 50px; height: 50px;">
+                <span class="fw-bold">1</span>
+            </div>
+        </div>
+        <h4 class="h5 text-center">Data Collection</h4>
+        <p class="text-center small">We collect detailed performance data for every NBA player throughout the season</p>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="text-center mb-3">
+            <div class="bg-primary text-white rounded-circle d-inline-flex justify-content-center align-items-center" style="width: 50px; height: 50px;">
+                <span class="fw-bold">2</span>
+            </div>
+        </div>
+        <h4 class="h5 text-center">Time Series Analysis</h4>
+        <p class="text-center small">ARIMA/SARIMA models identify trends, patterns, and seasonality in player performance</p>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="text-center mb-3">
+            <div class="bg-primary text-white rounded-circle d-inline-flex justify-content-center align-items-center" style="width: 50px; height: 50px;">
+                <span class="fw-bold">3</span>
+            </div>
+        </div>
+        <h4 class="h5 text-center">Performance Projection</h4>
+        <p class="text-center small">Sophisticated algorithms forecast individual player metrics with confidence intervals</p>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="text-center mb-3">
+            <div class="bg-primary text-white rounded-circle d-inline-flex justify-content-center align-items-center" style="width: 50px; height: 50px;">
+                <span class="fw-bold">4</span>
+            </div>
+        </div>
+        <h4 class="h5 text-center">Team Simulation</h4>
+        <p class="text-center small">Combines individual projections to simulate how teams and custom lineups will perform</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Fetch today's games and display them in the table
+    $(document).ready(function() {
+        $.getJSON("/api/today_games", function(data) {
+            let gamesHtml = '';
+            
+            if (data.games && data.games.length > 0) {
+                data.games.forEach(function(game) {
+                    const homeTeamLogo = `<img src="/static/img/teams/${game.home_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.home_team}">`;
+                    const awayTeamLogo = `<img src="/static/img/teams/${game.away_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.away_team}">`;
+                    
+                    let predictionHtml = '';
+                    if (game.prediction) {
+                        const winner = game.prediction.predicted_winner;
+                        const probability = (game.prediction.win_probability * 100).toFixed(1);
+                        const winnerClass = winner === game.home_team ? 'text-success' : 'text-danger';
+                        
+                        predictionHtml = `
+                            <span class="${winnerClass} fw-bold">${winner}</span>
+                            <span class="small text-muted">(${probability}%)</span>
+                        `;
+                    } else {
+                        predictionHtml = '<span class="text-muted">Not available</span>';
+                    }
+                    
+                    gamesHtml += `
+                        <tr>
+                            <td>${game.game_time}</td>
+                            <td>
+                                ${awayTeamLogo}
+                                <span class="ms-2">${game.away_team}</span>
+                            </td>
+                            <td>@</td>
+                            <td>
+                                ${homeTeamLogo}
+                                <span class="ms-2">${game.home_team}</span>
+                            </td>
+                            <td>${predictionHtml}</td>
+                            <td>
+                                <a href="/matchup_simulator?home=${encodeURIComponent(game.home_team)}&away=${encodeURIComponent(game.away_team)}" class="btn btn-sm btn-outline-primary">Simulate</a>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } else {
+                gamesHtml = `
+                    <tr>
+                        <td colspan="6" class="text-center py-3">
+                            <p>No games scheduled for today</p>
+                        </td>
+                    </tr>
+                `;
+            }
+            
+            $('#today-games').html(gamesHtml);
+        }).fail(function() {
+            $('#today-games').html(`
+                <tr>
+                    <td colspan="6" class="text-center py-3">
+                        <p class="text-danger">Error loading games. Please try again later.</p>
+                    </td>
+                </tr>
+            `);
+        });
+    });
+</script>
+{% endblock %}
