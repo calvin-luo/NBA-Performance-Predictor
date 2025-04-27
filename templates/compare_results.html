@@ -1,0 +1,972 @@
+{% extends "base.html" %}
+
+{% block title %}{{ player1 }} vs {{ player2 }} - Stat Lemon Comparison{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('compare_form') }}">Compare Players</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ player1 }} vs {{ player2 }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<!-- Player Comparison Header -->
+<div class="row mb-5">
+    <div class="col-md-5 text-center">
+        <div class="player-image-container mb-3">
+            <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 150px; height: 150px; margin: 0 auto;">
+                <i class="fas fa-user fa-4x text-secondary"></i>
+            </div>
+        </div>
+        <h2 class="player-name">{{ player1 }}</h2>
+        <p class="text-muted" id="player1-team-position">NBA Player</p>
+    </div>
+    
+    <div class="col-md-2 d-flex align-items-center justify-content-center">
+        <div class="vs-badge d-flex align-items-center justify-content-center bg-light rounded-circle" style="width: 80px; height: 80px;">
+            <span class="fw-bold fs-4">VS</span>
+        </div>
+    </div>
+    
+    <div class="col-md-5 text-center">
+        <div class="player-image-container mb-3">
+            <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 150px; height: 150px; margin: 0 auto;">
+                <i class="fas fa-user fa-4x text-secondary"></i>
+            </div>
+        </div>
+        <h2 class="player-name">{{ player2 }}</h2>
+        <p class="text-muted" id="player2-team-position">NBA Player</p>
+    </div>
+</div>
+
+<!-- Key Stats Comparison -->
+<div class="row mb-5">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Key Stats Comparison</h4>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Metric</th>
+                                <th class="text-center">{{ player1 }}</th>
+                                <th class="text-center">Comparison</th>
+                                <th class="text-center">{{ player2 }}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="key-stats-table">
+                            <tr>
+                                <td colspan="4" class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading player stats...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Performance Radar Chart -->
+<div class="row mb-5">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h4 class="mb-0">Performance Radar</h4>
+            </div>
+            <div class="card-body">
+                <canvas id="radarChart" width="600" height="400"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Metrics Comparison Tabs -->
+<div class="row mb-5">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="metricTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="scoring-tab" data-bs-toggle="tab" data-bs-target="#scoring" type="button" role="tab" aria-controls="scoring" aria-selected="true">Scoring</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="efficiency-tab" data-bs-toggle="tab" data-bs-target="#efficiency" type="button" role="tab" aria-controls="efficiency" aria-selected="false">Efficiency</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="impact-tab" data-bs-toggle="tab" data-bs-target="#impact" type="button" role="tab" aria-controls="impact" aria-selected="false">Impact</button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="metricTabsContent">
+                    <div class="tab-pane fade show active" id="scoring" role="tabpanel" aria-labelledby="scoring-tab">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <canvas id="scoringChart" width="800" height="400"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="efficiency" role="tabpanel" aria-labelledby="efficiency-tab">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <canvas id="efficiencyChart" width="800" height="400"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="impact" role="tabpanel" aria-labelledby="impact-tab">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <canvas id="impactChart" width="800" height="400"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prediction Comparison -->
+<div class="row mb-5">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Performance Predictions</h4>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Predictions based on time series analysis of past performance data. Showing projections for next game.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Metric</th>
+                                <th class="text-center">{{ player1 }} Projection</th>
+                                <th class="text-center">Difference</th>
+                                <th class="text-center">{{ player2 }} Projection</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prediction-table">
+                            <tr>
+                                <td colspan="4" class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading predictions...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="row mt-4">
+                    <div class="col-md-12">
+                        <h5>Prediction Confidence</h5>
+                        <canvas id="confidenceChart" width="800" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Game Log Comparison -->
+<div class="row mb-5">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h4 class="mb-0">Recent Game Performance</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <div class="btn-group" role="group" aria-label="Metric selection">
+                            <button type="button" class="btn btn-outline-primary active" data-metric="GAME_SCORE">Game Score</button>
+                            <button type="button" class="btn btn-outline-primary" data-metric="PTS_PER_MIN">Points</button>
+                            <button type="button" class="btn btn-outline-primary" data-metric="PLUS_MINUS">Plus/Minus</button>
+                            <button type="button" class="btn btn-outline-primary" data-metric="FG_PCT">FG%</button>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <canvas id="recentGamesChart" width="800" height="400"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="row mb-5">
+    <div class="col-md-12 text-center">
+        <a href="{{ url_for('lineup_builder') }}?players={{ player1 }},{{ player2 }}" class="btn btn-primary me-2">
+            <i class="fas fa-users me-2"></i> Build Lineup With These Players
+        </a>
+        <a href="{{ url_for('compare_form') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-sync-alt me-2"></i> Compare Different Players
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Variables to store player data
+    let player1Stats = null;
+    let player2Stats = null;
+    let player1Prediction = null;
+    let player2Prediction = null;
+    let currentMetric = 'GAME_SCORE';
+    
+    // Charts
+    let radarChart;
+    let scoringChart;
+    let efficiencyChart;
+    let impactChart;
+    let confidenceChart;
+    let recentGamesChart;
+    
+    $(document).ready(function() {
+        // Load player stats and predictions
+        loadPlayerData();
+        
+        // Handle metric selection for recent games chart
+        $('[data-metric]').click(function() {
+            $('[data-metric]').removeClass('active');
+            $(this).addClass('active');
+            currentMetric = $(this).data('metric');
+            updateRecentGamesChart();
+        });
+    });
+    
+    // Load player data
+    function loadPlayerData() {
+        // Load player 1 stats
+        $.getJSON(`/api/player_stats/{{ player1 }}`, function(data) {
+            player1Stats = data.stats;
+            
+            // Load player 2 stats
+            $.getJSON(`/api/player_stats/{{ player2 }}`, function(data) {
+                player2Stats = data.stats;
+                
+                // Update the comparison table
+                updateKeyStatsTable();
+                
+                // Create radar chart
+                createRadarChart();
+                
+                // Create metric charts
+                createMetricCharts();
+                
+                // Create recent games chart
+                createRecentGamesChart();
+                
+                // Load predictions
+                loadPredictions();
+            }).fail(function() {
+                alert(`Error loading stats for {{ player2 }}. Please try again.`);
+            });
+        }).fail(function() {
+            alert(`Error loading stats for {{ player1 }}. Please try again.`);
+        });
+    }
+    
+    // Load player predictions
+    function loadPredictions() {
+        // Load player 1 prediction
+        $.getJSON(`/api/player_prediction/{{ player1 }}`, function(data) {
+            player1Prediction = data.prediction;
+            
+            // Load player 2 prediction
+            $.getJSON(`/api/player_prediction/{{ player2 }}`, function(data) {
+                player2Prediction = data.prediction;
+                
+                // Update the prediction table
+                updatePredictionTable();
+                
+                // Create confidence chart
+                createConfidenceChart();
+            }).fail(function() {
+                alert(`Error loading prediction for {{ player2 }}. Please try again.`);
+            });
+        }).fail(function() {
+            alert(`Error loading prediction for {{ player1 }}. Please try again.`);
+        });
+    }
+    
+    // Calculate average for a specific metric
+    function calculateAverage(stats, metric) {
+        if (!stats || stats.length === 0) return 0;
+        
+        const values = stats.map(game => parseFloat(game[metric])).filter(val => !isNaN(val));
+        return values.reduce((sum, val) => sum + val, 0) / values.length;
+    }
+    
+    // Update key stats table
+    function updateKeyStatsTable() {
+        if (!player1Stats || !player2Stats) {
+            return;
+        }
+        
+        // Define metrics to display
+        const metrics = [
+            { key: 'PTS_PER_MIN', label: 'Points Per 36 Min', formatter: (val) => (val * 36).toFixed(1) },
+            { key: 'FG_PCT', label: 'Field Goal %', formatter: (val) => (val * 100).toFixed(1) + '%' },
+            { key: 'TS_PCT', label: 'True Shooting %', formatter: (val) => (val * 100).toFixed(1) + '%' },
+            { key: 'PLUS_MINUS', label: 'Plus/Minus', formatter: (val) => val.toFixed(1) },
+            { key: 'GAME_SCORE', label: 'Game Score', formatter: (val) => val.toFixed(1) },
+            { key: 'AST_TO_RATIO', label: 'Assist to TO Ratio', formatter: (val) => val.toFixed(1) }
+        ];
+        
+        let tableHtml = '';
+        
+        metrics.forEach(metric => {
+            const player1Avg = calculateAverage(player1Stats, metric.key);
+            const player2Avg = calculateAverage(player2Stats, metric.key);
+            const diff = player1Avg - player2Avg;
+            
+            // Determine which player is better for this metric
+            let player1Class = '';
+            let player2Class = '';
+            let comparisonHtml = '';
+            
+            if (diff > 0) {
+                player1Class = 'text-success fw-bold';
+                comparisonHtml = `<i class="fas fa-angle-double-left text-success"></i>`;
+            } else if (diff < 0) {
+                player2Class = 'text-success fw-bold';
+                comparisonHtml = `<i class="fas fa-angle-double-right text-success"></i>`;
+            } else {
+                comparisonHtml = `<i class="fas fa-equals text-muted"></i>`;
+            }
+            
+            tableHtml += `
+                <tr>
+                    <td>${metric.label}</td>
+                    <td class="text-center ${player1Class}">${metric.formatter(player1Avg)}</td>
+                    <td class="text-center">${comparisonHtml}</td>
+                    <td class="text-center ${player2Class}">${metric.formatter(player2Avg)}</td>
+                </tr>
+            `;
+        });
+        
+        $('#key-stats-table').html(tableHtml);
+    }
+    
+    // Create radar chart
+    function createRadarChart() {
+        if (!player1Stats || !player2Stats) {
+            return;
+        }
+        
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        
+        // Calculate normalized values for radar chart (0 to 100 scale)
+        const player1Data = [
+            calculateAverage(player1Stats, 'PTS_PER_MIN') * 30, // Scale points per min
+            calculateAverage(player1Stats, 'TS_PCT') * 100, // True shooting percentage
+            (calculateAverage(player1Stats, 'PLUS_MINUS') + 10) * 5, // Normalize plus/minus
+            calculateAverage(player1Stats, 'GAME_SCORE') * 4, // Game score
+            Math.min(calculateAverage(player1Stats, 'AST_TO_RATIO') * 10, 100) // Assist to turnover ratio
+        ];
+        
+        const player2Data = [
+            calculateAverage(player2Stats, 'PTS_PER_MIN') * 30,
+            calculateAverage(player2Stats, 'TS_PCT') * 100,
+            (calculateAverage(player2Stats, 'PLUS_MINUS') + 10) * 5,
+            calculateAverage(player2Stats, 'GAME_SCORE') * 4,
+            Math.min(calculateAverage(player2Stats, 'AST_TO_RATIO') * 10, 100)
+        ];
+        
+        if (radarChart) {
+            radarChart.destroy();
+        }
+        
+        radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['Scoring', 'Efficiency', 'Impact', 'Game Score', 'Playmaking'],
+                datasets: [
+                    {
+                        label: '{{ player1 }}',
+                        data: player1Data,
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        borderColor: 'rgb(54, 162, 235)',
+                        pointBackgroundColor: 'rgb(54, 162, 235)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgb(54, 162, 235)'
+                    },
+                    {
+                        label: '{{ player2 }}',
+                        data: player2Data,
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        borderColor: 'rgb(255, 99, 132)',
+                        pointBackgroundColor: 'rgb(255, 99, 132)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgb(255, 99, 132)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Player Performance Comparison'
+                    }
+                },
+                scales: {
+                    r: {
+                        angleLines: {
+                            display: true
+                        },
+                        suggestedMin: 0,
+                        suggestedMax: 100
+                    }
+                }
+            }
+        });
+    }
+    
+    // Create metric charts
+    function createMetricCharts() {
+        if (!player1Stats || !player2Stats) {
+            return;
+        }
+        
+        // Create scoring chart
+        createScoringChart();
+        
+        // Create efficiency chart
+        createEfficiencyChart();
+        
+        // Create impact chart
+        createImpactChart();
+    }
+    
+    // Create scoring chart
+    function createScoringChart() {
+        const ctx = document.getElementById('scoringChart').getContext('2d');
+        
+        // Get recent 10 games for both players
+        const player1Games = player1Stats.slice(0, 10).reverse();
+        const player2Games = player2Stats.slice(0, 10).reverse();
+        
+        // Calculate points per game (points per min * minutes)
+        const player1Points = player1Games.map(game => game.PTS_PER_MIN * game.MINUTES_PLAYED);
+        const player2Points = player2Games.map(game => game.PTS_PER_MIN * game.MINUTES_PLAYED);
+        
+        // Labels (Game 1, Game 2, etc.)
+        const labels = Array.from({ length: 10 }, (_, i) => `Game ${i + 1}`);
+        
+        if (scoringChart) {
+            scoringChart.destroy();
+        }
+        
+        scoringChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '{{ player1 }}',
+                        data: player1Points,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        tension: 0.1
+                    },
+                    {
+                        label: '{{ player2 }}',
+                        data: player2Points,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Points Scored (Last 10 Games)'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Points'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Recent Games'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Create efficiency chart
+    function createEfficiencyChart() {
+        const ctx = document.getElementById('efficiencyChart').getContext('2d');
+        
+        // Get field goal and true shooting percentages for both players
+        const player1FGPct = player1Stats.slice(0, 10).reverse().map(game => game.FG_PCT * 100);
+        const player1TSPct = player1Stats.slice(0, 10).reverse().map(game => game.TS_PCT * 100);
+        
+        const player2FGPct = player2Stats.slice(0, 10).reverse().map(game => game.FG_PCT * 100);
+        const player2TSPct = player2Stats.slice(0, 10).reverse().map(game => game.TS_PCT * 100);
+        
+        // Labels (Game 1, Game 2, etc.)
+        const labels = Array.from({ length: 10 }, (_, i) => `Game ${i + 1}`);
+        
+        if (efficiencyChart) {
+            efficiencyChart.destroy();
+        }
+        
+        efficiencyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: `{{ player1 }} (FG%)`,
+                        data: player1FGPct,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        borderDash: [],
+                        tension: 0.1
+                    },
+                    {
+                        label: `{{ player1 }} (TS%)`,
+                        data: player1TSPct,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        borderDash: [5, 5],
+                        tension: 0.1
+                    },
+                    {
+                        label: `{{ player2 }} (FG%)`,
+                        data: player2FGPct,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                        borderDash: [],
+                        tension: 0.1
+                    },
+                    {
+                        label: `{{ player2 }} (TS%)`,
+                        data: player2TSPct,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                        borderDash: [5, 5],
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Shooting Efficiency (Last 10 Games)'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Percentage'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Recent Games'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Create impact chart
+    function createImpactChart() {
+        const ctx = document.getElementById('impactChart').getContext('2d');
+        
+        // Get plus/minus and game score for both players
+        const player1PlusMinus = player1Stats.slice(0, 10).reverse().map(game => game.PLUS_MINUS);
+        const player1GameScore = player1Stats.slice(0, 10).reverse().map(game => game.GAME_SCORE);
+        
+        const player2PlusMinus = player2Stats.slice(0, 10).reverse().map(game => game.PLUS_MINUS);
+        const player2GameScore = player2Stats.slice(0, 10).reverse().map(game => game.GAME_SCORE);
+        
+        // Calculate averages for both metrics
+        const avgPlayer1PlusMinus = player1PlusMinus.reduce((sum, val) => sum + val, 0) / player1PlusMinus.length;
+        const avgPlayer2PlusMinus = player2PlusMinus.reduce((sum, val) => sum + val, 0) / player2PlusMinus.length;
+        
+        const avgPlayer1GameScore = player1GameScore.reduce((sum, val) => sum + val, 0) / player1GameScore.length;
+        const avgPlayer2GameScore = player2GameScore.reduce((sum, val) => sum + val, 0) / player2GameScore.length;
+        
+        if (impactChart) {
+            impactChart.destroy();
+        }
+        
+        impactChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Plus/Minus', 'Game Score'],
+                datasets: [
+                    {
+                        label: '{{ player1 }}',
+                        data: [avgPlayer1PlusMinus, avgPlayer1GameScore],
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)'
+                    },
+                    {
+                        label: '{{ player2 }}',
+                        data: [avgPlayer2PlusMinus, avgPlayer2GameScore],
+                        backgroundColor: 'rgba(255, 99, 132, 0.7)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Average Impact Metrics'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Value'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Update prediction table
+    function updatePredictionTable() {
+        if (!player1Prediction || !player2Prediction) {
+            return;
+        }
+        
+        // Define metrics to display
+        const metrics = [
+            { key: 'PTS_PER_MIN', label: 'Points Per 36 Min', formatter: (val) => (val * 36).toFixed(1), multiplier: 36 },
+            { key: 'FG_PCT', label: 'Field Goal %', formatter: (val) => (val * 100).toFixed(1) + '%', multiplier: 100 },
+            { key: 'TS_PCT', label: 'True Shooting %', formatter: (val) => (val * 100).toFixed(1) + '%', multiplier: 100 },
+            { key: 'PLUS_MINUS', label: 'Plus/Minus', formatter: (val) => val.toFixed(1), multiplier: 1 },
+            { key: 'GAME_SCORE', label: 'Game Score', formatter: (val) => val.toFixed(1), multiplier: 1 }
+        ];
+        
+        let tableHtml = '';
+        
+        metrics.forEach(metric => {
+            if (player1Prediction[metric.key] && player2Prediction[metric.key]) {
+                const player1Val = player1Prediction[metric.key].forecast;
+                const player2Val = player2Prediction[metric.key].forecast;
+                const diff = (player1Val - player2Val) * metric.multiplier;
+                
+                // Determine which player is better for this metric
+                let player1Class = '';
+                let player2Class = '';
+                let diffHtml = '';
+                
+                if (diff > 0) {
+                    player1Class = 'text-success fw-bold';
+                    diffHtml = `<span class="text-success">+${Math.abs(diff).toFixed(1)}</span>`;
+                } else if (diff < 0) {
+                    player2Class = 'text-success fw-bold';
+                    diffHtml = `<span class="text-success">+${Math.abs(diff).toFixed(1)}</span>`;
+                } else {
+                    diffHtml = `<span class="text-muted">0.0</span>`;
+                }
+                
+                tableHtml += `
+                    <tr>
+                        <td>${metric.label}</td>
+                        <td class="text-center ${player1Class}">${metric.formatter(player1Val)}</td>
+                        <td class="text-center">${diffHtml}</td>
+                        <td class="text-center ${player2Class}">${metric.formatter(player2Val)}</td>
+                    </tr>
+                `;
+            }
+        });
+        
+        if (tableHtml === '') {
+            tableHtml = `
+                <tr>
+                    <td colspan="4" class="text-center text-muted py-3">
+                        No prediction data available
+                    </td>
+                </tr>
+            `;
+        }
+        
+        $('#prediction-table').html(tableHtml);
+    }
+    
+    // Create confidence chart
+    function createConfidenceChart() {
+        if (!player1Prediction || !player2Prediction) {
+            return;
+        }
+        
+        const ctx = document.getElementById('confidenceChart').getContext('2d');
+        
+        // Define metrics to display
+        const metrics = [
+            { key: 'PTS_PER_MIN', label: 'Points', multiplier: 36 },
+            { key: 'GAME_SCORE', label: 'Game Score', multiplier: 1 }
+        ];
+        
+        const datasets = [];
+        
+        // Add data for each player
+        metrics.forEach((metric, index) => {
+            if (player1Prediction[metric.key] && player2Prediction[metric.key]) {
+                // Player 1 data
+                const player1Val = player1Prediction[metric.key].forecast * metric.multiplier;
+                const player1Lower = player1Prediction[metric.key].lower_bound * metric.multiplier;
+                const player1Upper = player1Prediction[metric.key].upper_bound * metric.multiplier;
+                
+                // Player 2 data
+                const player2Val = player2Prediction[metric.key].forecast * metric.multiplier;
+                const player2Lower = player2Prediction[metric.key].lower_bound * metric.multiplier;
+                const player2Upper = player2Prediction[metric.key].upper_bound * metric.multiplier;
+                
+                datasets.push({
+                    label: `{{ player1 }} - ${metric.label}`,
+                    data: [{
+                        x: index * 2,
+                        y: player1Val,
+                        yMin: player1Lower,
+                        yMax: player1Upper
+                    }],
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)'
+                });
+                
+                datasets.push({
+                    label: `{{ player2 }} - ${metric.label}`,
+                    data: [{
+                        x: index * 2 + 1,
+                        y: player2Val,
+                        yMin: player2Lower,
+                        yMax: player2Upper
+                    }],
+                    backgroundColor: 'rgba(255, 99, 132, 0.7)'
+                });
+            }
+        });
+        
+        if (confidenceChart) {
+            confidenceChart.destroy();
+        }
+        
+        confidenceChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Prediction Confidence Intervals'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const dataPoint = context.raw;
+                                return [
+                                    `Forecast: ${dataPoint.y.toFixed(1)}`,
+                                    `Range: ${dataPoint.yMin.toFixed(1)} - ${dataPoint.yMax.toFixed(1)}`
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        offset: true,
+                        grid: {
+                            offset: true
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                // Custom labels for x-axis
+                                const metricIndex = Math.floor(value / 2);
+                                const player = value % 2 === 0 ? '{{ player1 }}' : '{{ player2 }}';
+                                
+                                if (metricIndex < metrics.length) {
+                                    return `${player} ${metrics[metricIndex].label}`;
+                                }
+                                return '';
+                            }
+                        }
+                    },
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    }
+    
+    // Create recent games chart
+    function createRecentGamesChart() {
+        if (!player1Stats || !player2Stats) {
+            return;
+        }
+        
+        const ctx = document.getElementById('recentGamesChart').getContext('2d');
+        
+        // Get data for the current metric
+        const player1Data = getCurrentMetricData(player1Stats);
+        const player2Data = getCurrentMetricData(player2Stats);
+        
+        // Labels (Game 1, Game 2, etc.)
+        const labels = Array.from({ length: 10 }, (_, i) => `Game ${i + 1}`);
+        
+        if (recentGamesChart) {
+            recentGamesChart.destroy();
+        }
+        
+        recentGamesChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '{{ player1 }}',
+                        data: player1Data,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        tension: 0.1
+                    },
+                    {
+                        label: '{{ player2 }}',
+                        data: player2Data,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: getMetricTitle()
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Recent Games'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Update recent games chart when metric changes
+    function updateRecentGamesChart() {
+        if (!recentGamesChart || !player1Stats || !player2Stats) {
+            return;
+        }
+        
+        // Get data for the new metric
+        const player1Data = getCurrentMetricData(player1Stats);
+        const player2Data = getCurrentMetricData(player2Stats);
+        
+        // Update chart data
+        recentGamesChart.data.datasets[0].data = player1Data;
+        recentGamesChart.data.datasets[1].data = player2Data;
+        
+        // Update chart title
+        recentGamesChart.options.plugins.title.text = getMetricTitle();
+        
+        // Update the chart
+        recentGamesChart.update();
+    }
+    
+    // Get data for the current metric
+    function getCurrentMetricData(stats) {
+        // Get last 10 games
+        const recentGames = stats.slice(0, 10).reverse();
+        
+        // Format data based on the metric
+        let data;
+        
+        switch (currentMetric) {
+            case 'PTS_PER_MIN':
+                // Convert points per minute to points per game
+                data = recentGames.map(game => game.PTS_PER_MIN * game.MINUTES_PLAYED);
+                break;
+            case 'FG_PCT':
+            case 'TS_PCT':
+                // Convert percentages to 0-100 scale
+                data = recentGames.map(game => game[currentMetric] * 100);
+                break;
+            default:
+                data = recentGames.map(game => game[currentMetric]);
+        }
+        
+        return data;
+    }
+    
+    // Get title for the current metric
+    function getMetricTitle() {
+        const titles = {
+            'GAME_SCORE': 'Game Score (Last 10 Games)',
+            'PTS_PER_MIN': 'Points (Last 10 Games)',
+            'PLUS_MINUS': 'Plus/Minus (Last 10 Games)',
+            'FG_PCT': 'Field Goal % (Last 10 Games)'
+        };
+        
+        return titles[currentMetric] || `${currentMetric} (Last 10 Games)`;
+    }
+</script>
+{% endblock %}
