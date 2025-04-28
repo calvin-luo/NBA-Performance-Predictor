@@ -68,6 +68,9 @@
         <h2 class="mb-4">Today's Games</h2>
         <div class="card shadow-sm">
             <div class="card-body">
+                <div id="alerts-container">
+                    <!-- Alerts will be displayed here -->
+                </div>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
                         <thead>
@@ -154,17 +157,114 @@
 
 {% block extra_js %}
 <script>
-    // Fetch today's games and display them in the table
+    // Global variables for games handling
+    let todayGamesLoaded = false;
+    let loadingGames = false;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
+
+    // Load today's games when document is ready
     $(document).ready(function() {
-        $.getJSON("/api/today_games", function(data) {
-            let gamesHtml = '';
-            
-            if (data.games && data.games.length > 0) {
-                data.games.forEach(function(game) {
-                    const homeTeamLogo = `<img src="/static/img/teams/${game.home_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.home_team}">`;
-                    const awayTeamLogo = `<img src="/static/img/teams/${game.away_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.away_team}">`;
+        loadTodayGames();
+    });
+
+    // Function to load today's games
+    function loadTodayGames() {
+        // Prevent multiple simultaneous requests
+        if (loadingGames) return;
+        
+        loadingGames = true;
+        
+        // Show loading state
+        $('#today-games').html(`
+            <tr>
+                <td colspan="6" class="text-center py-3">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading today's games...</p>
+                </td>
+            </tr>
+        `);
+        
+        // Clear any existing alerts
+        $('#alerts-container').empty();
+        
+        // Make the API request
+        $.ajax({
+            url: "/api/today_games",
+            method: "GET",
+            dataType: "json",
+            timeout: 10000, // 10 second timeout
+            success: function(data) {
+                // Reset retry count on success
+                retryCount = 0;
+                loadingGames = false;
+                todayGamesLoaded = true;
+                
+                // Process and display the games
+                processGamesData(data);
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+                loadingGames = false;
+                
+                // Log the error
+                console.error("Error loading games:", textStatus, errorThrown);
+                
+                // Check for specific error types
+                let errorMessage = "An error occurred while loading today's games.";
+                
+                if (textStatus === "timeout") {
+                    errorMessage = "Request timed out. The server might be busy.";
+                } else if (jqXHR.status === 404) {
+                    errorMessage = "The games data could not be found on the server.";
+                } else if (jqXHR.status === 500) {
+                    errorMessage = "Server error occurred. Our team has been notified.";
+                }
+                
+                // Show error message
+                $('#alerts-container').html(`
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        ${errorMessage}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                `);
+                
+                // Show error in games table with retry button
+                displayErrorState(errorMessage);
+                
+                // Auto-retry if we haven't exceeded the maximum retries
+                retryCount++;
+                if (retryCount <= MAX_RETRIES) {
+                    setTimeout(loadTodayGames, 3000 * retryCount); // Increase delay with each retry
+                }
+            }
+        });
+    }
+    
+    // Process and display games data
+    function processGamesData(data) {
+        let gamesHtml = '';
+        
+        // Check if we have games data
+        if (data.games && data.games.length > 0) {
+            // Process each game
+            data.games.forEach(function(game) {
+                try {
+                    // Skip games with missing essential data
+                    if (!game.home_team || !game.away_team) {
+                        console.warn("Skipping game with incomplete data:", game);
+                        return;
+                    }
                     
-                    let predictionHtml = '';
+                    // Create team logos with error handling
+                    const homeTeamLogo = `<img src="/static/img/teams/${game.home_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.home_team}" onerror="this.onerror=null; this.src='/static/img/placeholder-team.png';">`;
+                    const awayTeamLogo = `<img src="/static/img/teams/${game.away_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.away_team}" onerror="this.onerror=null; this.src='/static/img/placeholder-team.png';">`;
+                    
+                    // Generate prediction HTML
+                    let predictionHtml = '<span class="text-muted">Not available</span>';
+                    
                     if (game.prediction) {
                         const winner = game.prediction.predicted_winner;
                         const probability = (game.prediction.win_probability * 100).toFixed(1);
@@ -174,21 +274,24 @@
                             <span class="${winnerClass} fw-bold">${winner}</span>
                             <span class="small text-muted">(${probability}%)</span>
                         `;
-                    } else {
-                        predictionHtml = '<span class="text-muted">Not available</span>';
                     }
                     
+                    // Add game row
                     gamesHtml += `
                         <tr>
-                            <td>${game.game_time}</td>
+                            <td>${game.game_time || 'TBD'}</td>
                             <td>
-                                ${awayTeamLogo}
-                                <span class="ms-2">${game.away_team}</span>
+                                <div class="d-flex align-items-center">
+                                    ${awayTeamLogo}
+                                    <span class="ms-2">${game.away_team}</span>
+                                </div>
                             </td>
                             <td>@</td>
                             <td>
-                                ${homeTeamLogo}
-                                <span class="ms-2">${game.home_team}</span>
+                                <div class="d-flex align-items-center">
+                                    ${homeTeamLogo}
+                                    <span class="ms-2">${game.home_team}</span>
+                                </div>
                             </td>
                             <td>${predictionHtml}</td>
                             <td>
@@ -196,27 +299,64 @@
                             </td>
                         </tr>
                     `;
-                });
-            } else {
-                gamesHtml = `
-                    <tr>
-                        <td colspan="6" class="text-center py-3">
-                            <p>No games scheduled for today</p>
-                        </td>
-                    </tr>
-                `;
-            }
-            
+                } catch (error) {
+                    console.error("Error processing game:", error);
+                    // Skip this game but continue with others
+                }
+            });
+        }
+        
+        // Update the table with games or show "no games" message
+        if (gamesHtml) {
             $('#today-games').html(gamesHtml);
-        }).fail(function() {
-            $('#today-games').html(`
-                <tr>
-                    <td colspan="6" class="text-center py-3">
-                        <p class="text-danger">Error loading games. Please try again later.</p>
-                    </td>
-                </tr>
+        } else {
+            displayNoGamesState();
+        }
+        
+        // Show success message if status is provided and is "success"
+        if (data.status === "success" && data.message) {
+            $('#alerts-container').html(`
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="fas fa-check-circle me-2"></i>
+                    ${data.message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
             `);
-        });
-    });
+        }
+    }
+    
+    // Display error state
+    function displayErrorState(errorMessage) {
+        $('#today-games').html(`
+            <tr>
+                <td colspan="6" class="text-center py-4">
+                    <div class="error-container mb-3">
+                        <i class="fas fa-exclamation-circle fa-3x text-danger mb-3"></i>
+                        <h5 class="text-danger">Unable to load games</h5>
+                        <p>${errorMessage}</p>
+                    </div>
+                    <button id="retry-button" class="btn btn-primary" onclick="loadTodayGames()">
+                        <i class="fas fa-sync-alt me-2"></i> Retry
+                    </button>
+                </td>
+            </tr>
+        `);
+    }
+    
+    // Display no games state
+    function displayNoGamesState() {
+        $('#today-games').html(`
+            <tr>
+                <td colspan="6" class="text-center py-4">
+                    <div class="mb-3">
+                        <i class="fas fa-calendar-day fa-3x text-muted mb-3"></i>
+                        <h5>No games scheduled for today</h5>
+                        <p class="text-muted">Check back later or view the full schedule.</p>
+                    </div>
+                    <a href="/schedule" class="btn btn-outline-primary mt-2">View Schedule</a>
+                </td>
+            </tr>
+        `);
+    }
 </script>
 {% endblock %}

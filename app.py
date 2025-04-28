@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import random
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 
@@ -246,6 +247,106 @@ def api_compare_players():
     return jsonify({
         'comparisons': comparisons
     })
+
+
+@app.route('/api/today_games')
+def api_today_games():
+    """API endpoint for today's games."""
+    try:
+        # Parse optional parameters
+        date_type = request.args.get('date_type', 'today')
+        
+        # Get today's date
+        if date_type == 'today':
+            target_date = datetime.now().strftime('%Y-%m-%d')
+        elif date_type == 'tomorrow':
+            target_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+        else:
+            # Custom date format if provided
+            target_date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        
+        logger.info(f"Fetching games for date: {target_date}")
+        
+        # Query the database for games on the target date
+        try:
+            # For the MVP, we'll use mock data or query the database if available
+            games = []
+            
+            # Connect to the database
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM games WHERE game_date = ?", 
+                    (target_date,)
+                )
+                rows = cursor.fetchall()
+                
+                # Convert rows to dictionaries
+                for row in rows:
+                    game = {
+                        'game_id': row['game_id'],
+                        'home_team': row['home_team'],
+                        'away_team': row['away_team'],
+                        'game_date': row['game_date'],
+                        'game_time': row['game_time'],
+                        'venue': row['venue'],
+                        'status': 'Scheduled'  # Default status
+                    }
+                    
+                    # Try to get prediction if available
+                    try:
+                        # This would be replaced with actual prediction retrieval in production
+                        # For now, just add a mock prediction for demonstration
+                        if game['game_id'] and random.random() > 0.5:  # 50% chance to have a prediction
+                            winner = game['home_team'] if random.random() > 0.5 else game['away_team']
+                            game['prediction'] = {
+                                'predicted_winner': winner,
+                                'win_probability': round(random.uniform(0.5, 0.85), 2),
+                                'predicted_home_points': round(random.uniform(100, 120), 1),
+                                'predicted_away_points': round(random.uniform(100, 120), 1)
+                            }
+                    except Exception as pred_error:
+                        logger.warning(f"Error getting prediction for game {game['game_id']}: {str(pred_error)}")
+                        # Continue without prediction
+                    
+                    games.append(game)
+            
+            # If no games found, return an empty list with a message
+            if not games:
+                logger.info(f"No games found for date: {target_date}")
+                return jsonify({
+                    'games': [],
+                    'message': f"No games scheduled for {target_date}",
+                    'status': 'success'
+                })
+            
+            logger.info(f"Found {len(games)} games for date: {target_date}")
+            return jsonify({
+                'games': games,
+                'count': len(games),
+                'date': target_date,
+                'status': 'success'
+            })
+            
+        except Exception as db_error:
+            # Database error
+            logger.error(f"Database error in api_today_games: {str(db_error)}")
+            return jsonify({
+                'games': [],
+                'message': "Error retrieving games from database",
+                'error': str(db_error),
+                'status': 'error'
+            }), 500
+    
+    except Exception as e:
+        # General error
+        logger.error(f"Error in api_today_games: {str(e)}")
+        return jsonify({
+            'games': [],
+            'message': "An unexpected error occurred",
+            'error': str(e),
+            'status': 'error'
+        }), 500
 
 
 @app.route('/api/team_prediction')
