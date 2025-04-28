@@ -59,6 +59,21 @@ $(document).ready(function() {
     initMobileMenu();
 });
 
+// ======= Handle Player Search =======
+
+/**
+ * Handle player search form submission
+ * @param {Event} event - The form submission event
+ */
+function handleSearch(event) {
+    event.preventDefault();
+    const playerName = document.getElementById('player-search').value.trim();
+    
+    if (playerName) {
+        window.location.href = "/player/" + encodeURIComponent(playerName);
+    }
+}
+
 // ======= Initialization Functions =======
 
 /**
@@ -75,7 +90,7 @@ function initTooltips() {
  * Initialize player search autocomplete
  */
 function initPlayerSearchAutocomplete() {
-    if ($('#player-search').length > 0) {
+    if ($('#player-search').length > 0 && $.fn.autocomplete) {
         $('#player-search').autocomplete({
             source: function(request, response) {
                 // In production, this would be an API call
