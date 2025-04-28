@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Error - Stat Lemon{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center py-5">
+    <div class="col-md-8">
+        <div class="card shadow-sm border-danger">
+            <div class="card-body text-center py-5">
+                <div class="mb-4">
+                    <i class="fas fa-exclamation-circle text-danger fa-5x"></i>
+                </div>
+                <h2 class="mb-4">Oops! Something went wrong</h2>
+                <p class="lead mb-4">{{ message }}</p>
+                <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                    <a href="{{ url_for('index') }}" class="btn btn-primary me-sm-3">
+                        <i class="fas fa-home me-2"></i> Go Home
+                    </a>
+                    <button onclick="history.back()" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i> Go Back
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Need Help?</h5>
+            </div>
+            <div class="card-body">
+                <p>If you're experiencing issues with Stat Lemon, here are some things you can try:</p>
+                <ul>
+                    <li>Refresh the page and try again</li>
+                    <li>Clear your browser cache and cookies</li>
+                    <li>Try a different browser</li>
+                    <li>Check your internet connection</li>
+                </ul>
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    If you continue to experience issues, please contact our support team or check our <a href="#" class="alert-link">Help Center</a>.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12 text-center">
+        <h4>Suggested Content</h4>
+    </div>
+</div>
+
+<div class="row row-cols-1 row-cols-md-3 g-4 mt-2 mb-5">
+    <div class="col">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Player Comparison</h5>
+                <p class="card-text">Compare stats and projections between any two NBA players.</p>
+                <a href="{{ url_for('compare_form') }}" class="btn btn-outline-primary">Compare Players</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Lineup Builder</h5>
+                <p class="card-text">Create your fantasy lineup and get team performance predictions.</p>
+                <a href="{{ url_for('lineup_builder') }}" class="btn btn-outline-primary">Build Lineup</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Today's Games</h5>
+                <p class="card-text">See today's NBA schedule and game predictions.</p>
+                <a href="{{ url_for('schedule') }}" class="btn btn-outline-primary">View Schedule</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
