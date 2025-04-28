@@ -1,0 +1,936 @@
+{% extends "base.html" %}
+
+{% block title %}Lineup Builder - Stat Lemon{% endblock %}
+
+{% block extra_css %}
+<style>
+    .court-container {
+        position: relative;
+        background-image: url("{{ url_for('static', filename='img/basketball-court.svg') }}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        height: 500px;
+        border: 2px solid #ddd;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    
+    .player-slot {
+        position: absolute;
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        border: 3px dashed #aaa;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(255, 255, 255, 0.7);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .player-slot:hover {
+        border-color: #007bff;
+    }
+    
+    .player-slot.filled {
+        border-style: solid;
+        border-color: #28a745;
+        background-color: rgba(255, 255, 255, 0.9);
+    }
+    
+    .player-slot.pg {
+        top: 75%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+    
+    .player-slot.sg {
+        top: 70%;
+        left: 75%;
+        transform: translate(-50%, -50%);
+    }
+    
+    .player-slot.sf {
+        top: 70%;
+        left: 25%;
+        transform: translate(-50%, -50%);
+    }
+    
+    .player-slot.pf {
+        top: 25%;
+        left: 25%;
+        transform: translate(-50%, -50%);
+    }
+    
+    .player-slot.c {
+        top: 25%;
+        left: 75%;
+        transform: translate(-50%, -50%);
+    }
+    
+    .player-card {
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 10px;
+        margin-bottom: 10px;
+        cursor: grab;
+        transition: all 0.2s ease;
+    }
+    
+    .player-card:hover {
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .player-card.selected {
+        border-color: #007bff;
+        background-color: #f8f9fa;
+    }
+    
+    .available-players {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    
+    .stat-badge {
+        display: inline-block;
+        padding: 0.25em 0.6em;
+        font-size: 75%;
+        font-weight: 700;
+        line-height: 1;
+        text-align: center;
+        white-space: nowrap;
+        vertical-align: baseline;
+        border-radius: 0.25rem;
+        background-color: #f8f9fa;
+        color: #495057;
+        margin-right: 0.3rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Lineup Builder</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Build Your Dream NBA Lineup</h4>
+            </div>
+            <div class="card-body">
+                <p>Drag and drop players to create your ultimate fantasy NBA lineup. We'll analyze your team's chemistry and predict team performance.</p>
+                
+                <div class="row align-items-center mb-4">
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="player-search" placeholder="Search for players...">
+                            <button class="btn btn-outline-secondary" type="button" id="search-btn">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" id="position-filter">
+                            <option value="all">All Positions</option>
+                            <option value="PG">Point Guards</option>
+                            <option value="SG">Shooting Guards</option>
+                            <option value="SF">Small Forwards</option>
+                            <option value="PF">Power Forwards</option>
+                            <option value="C">Centers</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" id="opponent-select">
+                            <option value="">Select Opponent Team</option>
+                            <!-- Will be populated with JavaScript -->
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-5">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0">Court View</h5>
+            </div>
+            <div class="card-body">
+                <div class="court-container">
+                    <div class="player-slot pg" data-position="PG">
+                        <i class="fas fa-plus text-muted"></i>
+                        <input type="hidden" name="player_pg" id="player_pg" value="">
+                    </div>
+                    <div class="player-slot sg" data-position="SG">
+                        <i class="fas fa-plus text-muted"></i>
+                        <input type="hidden" name="player_sg" id="player_sg" value="">
+                    </div>
+                    <div class="player-slot sf" data-position="SF">
+                        <i class="fas fa-plus text-muted"></i>
+                        <input type="hidden" name="player_sf" id="player_sf" value="">
+                    </div>
+                    <div class="player-slot pf" data-position="PF">
+                        <i class="fas fa-plus text-muted"></i>
+                        <input type="hidden" name="player_pf" id="player_pf" value="">
+                    </div>
+                    <div class="player-slot c" data-position="C">
+                        <i class="fas fa-plus text-muted"></i>
+                        <input type="hidden" name="player_c" id="player_c" value="">
+                    </div>
+                </div>
+                
+                <div class="d-flex justify-content-between">
+                    <button class="btn btn-danger" id="reset-lineup-btn">
+                        <i class="fas fa-trash-alt me-2"></i> Clear Lineup
+                    </button>
+                    <button class="btn btn-primary" id="analyze-lineup-btn">
+                        <i class="fas fa-chart-line me-2"></i> Analyze Lineup
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Lineup Analysis Results (Initially Hidden) -->
+        <div class="card shadow-sm mt-4" id="analysis-results" style="display: none;">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Team Analysis Results</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title text-center">Team Performance Projection</h6>
+                                <div class="text-center mb-3">
+                                    <span class="display-4" id="team-score">0.0</span>
+                                    <span class="text-muted d-block">Team Score</span>
+                                </div>
+                                <div class="row text-center">
+                                    <div class="col-4">
+                                        <span class="fs-4" id="team-offense">0.0</span>
+                                        <span class="text-muted d-block small">Offense</span>
+                                    </div>
+                                    <div class="col-4">
+                                        <span class="fs-4" id="team-defense">0.0</span>
+                                        <span class="text-muted d-block small">Defense</span>
+                                    </div>
+                                    <div class="col-4">
+                                        <span class="fs-4" id="team-chemistry">0.0</span>
+                                        <span class="text-muted d-block small">Chemistry</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title text-center">Team Strengths & Weaknesses</h6>
+                                <canvas id="teamRadarChart" width="250" height="250"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mt-4">
+                    <div class="col-md-12">
+                        <h6>Team Insights</h6>
+                        <ul class="list-group" id="team-insights">
+                            <li class="list-group-item list-group-item-light text-center">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <span class="ms-2">Analyzing team chemistry and performance...</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0">Available Players</h5>
+            </div>
+            <div class="card-body p-2">
+                <div class="available-players" id="available-players">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-3">Loading available players...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Selected Player Modal -->
+<div class="modal fade" id="playerModal" tabindex="-1" aria-labelledby="playerModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="playerModalLabel">Player Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="playerModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading player details...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="add-player-btn">Add to Lineup</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Global variables
+    let availablePlayers = [];
+    let selectedPlayer = null;
+    let currentPositionFilter = 'all';
+    let currentLineup = {
+        PG: null,
+        SG: null,
+        SF: null,
+        PF: null,
+        C: null
+    };
+    
+    // NBA Teams list
+    const nbaTeams = [
+        "Atlanta Hawks", "Boston Celtics", "Brooklyn Nets", "Charlotte Hornets",
+        "Chicago Bulls", "Cleveland Cavaliers", "Dallas Mavericks", "Denver Nuggets",
+        "Detroit Pistons", "Golden State Warriors", "Houston Rockets", "Indiana Pacers",
+        "Los Angeles Clippers", "Los Angeles Lakers", "Memphis Grizzlies", "Miami Heat",
+        "Milwaukee Bucks", "Minnesota Timberwolves", "New Orleans Pelicans", "New York Knicks",
+        "Oklahoma City Thunder", "Orlando Magic", "Philadelphia 76ers", "Phoenix Suns",
+        "Portland Trail Blazers", "Sacramento Kings", "San Antonio Spurs", "Toronto Raptors",
+        "Utah Jazz", "Washington Wizards"
+    ];
+    
+    // Sample players data (in production, this would come from the API)
+    const samplePlayers = [
+        { name: "LeBron James", position: "SF", team: "Los Angeles Lakers", stats: { points: 27.4, rebounds: 8.3, assists: 8.1, fieldGoalPct: 52.4 } },
+        { name: "Stephen Curry", position: "PG", team: "Golden State Warriors", stats: { points: 29.7, rebounds: 5.6, assists: 6.3, fieldGoalPct: 47.8 } },
+        { name: "Kevin Durant", position: "SF", team: "Phoenix Suns", stats: { points: 29.1, rebounds: 7.1, assists: 5.0, fieldGoalPct: 51.8 } },
+        { name: "Nikola Jokić", position: "C", team: "Denver Nuggets", stats: { points: 24.5, rebounds: 11.8, assists: 9.8, fieldGoalPct: 58.3 } },
+        { name: "Joel Embiid", position: "C", team: "Philadelphia 76ers", stats: { points: 33.1, rebounds: 10.2, assists: 4.2, fieldGoalPct: 54.8 } },
+        { name: "Giannis Antetokounmpo", position: "PF", team: "Milwaukee Bucks", stats: { points: 31.1, rebounds: 11.8, assists: 5.7, fieldGoalPct: 55.3 } },
+        { name: "Luka Dončić", position: "PG", team: "Dallas Mavericks", stats: { points: 32.4, rebounds: 8.6, assists: 8.0, fieldGoalPct: 49.6 } },
+        { name: "Devin Booker", position: "SG", team: "Phoenix Suns", stats: { points: 27.8, rebounds: 4.5, assists: 5.5, fieldGoalPct: 47.7 } },
+        { name: "Jayson Tatum", position: "SF", team: "Boston Celtics", stats: { points: 30.1, rebounds: 8.8, assists: 4.6, fieldGoalPct: 46.6 } },
+        { name: "Jimmy Butler", position: "SF", team: "Miami Heat", stats: { points: 22.9, rebounds: 5.9, assists: 5.3, fieldGoalPct: 53.9 } },
+        { name: "Damian Lillard", position: "PG", team: "Milwaukee Bucks", stats: { points: 32.2, rebounds: 4.8, assists: 7.3, fieldGoalPct: 46.3 } },
+        { name: "Anthony Davis", position: "PF", team: "Los Angeles Lakers", stats: { points: 25.9, rebounds: 12.5, assists: 2.6, fieldGoalPct: 55.6 } },
+        { name: "Ja Morant", position: "PG", team: "Memphis Grizzlies", stats: { points: 26.2, rebounds: 5.9, assists: 8.1, fieldGoalPct: 47.6 } },
+        { name: "Donovan Mitchell", position: "SG", team: "Cleveland Cavaliers", stats: { points: 28.3, rebounds: 4.4, assists: 4.4, fieldGoalPct: 48.4 } },
+        { name: "Trae Young", position: "PG", team: "Atlanta Hawks", stats: { points: 26.2, rebounds: 3.0, assists: 10.8, fieldGoalPct: 42.5 } },
+        { name: "Bam Adebayo", position: "C", team: "Miami Heat", stats: { points: 20.4, rebounds: 9.2, assists: 3.5, fieldGoalPct: 54.0 } },
+        { name: "Jaylen Brown", position: "SG", team: "Boston Celtics", stats: { points: 26.6, rebounds: 6.9, assists: 3.5, fieldGoalPct: 49.1 } },
+        { name: "Zion Williamson", position: "PF", team: "New Orleans Pelicans", stats: { points: 25.8, rebounds: 7.0, assists: 4.7, fieldGoalPct: 60.8 } },
+        { name: "Darius Garland", position: "PG", team: "Cleveland Cavaliers", stats: { points: 21.6, rebounds: 2.7, assists: 7.8, fieldGoalPct: 46.2 } },
+        { name: "Kyrie Irving", position: "PG", team: "Dallas Mavericks", stats: { points: 25.1, rebounds: 5.1, assists: 5.2, fieldGoalPct: 49.4 } }
+    ];
+    
+    $(document).ready(function() {
+        // Populate opponent select dropdown
+        populateOpponentDropdown();
+        
+        // Load available players
+        loadAvailablePlayers();
+        
+        // Handle player search
+        $('#search-btn').click(function() {
+            searchPlayers();
+        });
+        
+        $('#player-search').keypress(function(e) {
+            if (e.which === 13) {
+                searchPlayers();
+            }
+        });
+        
+        // Handle position filter
+        $('#position-filter').change(function() {
+            currentPositionFilter = $(this).val();
+            filterPlayersByPosition();
+        });
+        
+        // Handle player slot click
+        $('.player-slot').click(function() {
+            const position = $(this).data('position');
+            const playerId = $(this).find('input').val();
+            
+            // If slot is empty, show available players for that position
+            if (!playerId) {
+                currentPositionFilter = position;
+                $('#position-filter').val(position);
+                filterPlayersByPosition();
+            } else {
+                // If slot has a player, show player details
+                const player = findPlayerByName(playerId);
+                if (player) {
+                    showPlayerDetails(player);
+                }
+            }
+        });
+        
+        // Handle reset lineup button
+        $('#reset-lineup-btn').click(function() {
+            resetLineup();
+        });
+        
+        // Handle analyze lineup button
+        $('#analyze-lineup-btn').click(function() {
+            analyzeLineup();
+        });
+        
+        // Add player to lineup when modal button is clicked
+        $('#add-player-btn').click(function() {
+            if (selectedPlayer) {
+                addPlayerToLineup(selectedPlayer);
+                $('#playerModal').modal('hide');
+            }
+        });
+        
+        // Initialize from URL parameters if present
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('players')) {
+            const playerNames = urlParams.get('players').split(',');
+            preloadPlayers(playerNames);
+        }
+    });
+    
+    // Load available players
+    function loadAvailablePlayers() {
+        // In production, this would be an API call
+        // For now, use sample data
+        availablePlayers = samplePlayers;
+        
+        // Render all players
+        renderAvailablePlayers(availablePlayers);
+    }
+    
+    // Render available players
+    function renderAvailablePlayers(players) {
+        let html = '';
+        
+        if (players.length === 0) {
+            html = '<div class="text-center py-5"><p>No players found matching your criteria.</p></div>';
+        } else {
+            players.forEach(player => {
+                html += `
+                    <div class="player-card" data-name="${player.name}" data-position="${player.position}">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                    <i class="fas fa-user text-secondary"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="mb-0">${player.name}</h6>
+                                <p class="text-muted mb-1 small">${player.position} - ${player.team}</p>
+                                <div>
+                                    <span class="stat-badge">${player.stats.points} PPG</span>
+                                    <span class="stat-badge">${player.stats.fieldGoalPct}% FG</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        $('#available-players').html(html);
+        
+        // Attach click handlers to player cards
+        $('.player-card').click(function() {
+            const playerName = $(this).data('name');
+            const player = findPlayerByName(playerName);
+            
+            if (player) {
+                selectedPlayer = player;
+                showPlayerDetails(player);
+            }
+        });
+    }
+    
+    // Find player by name
+    function findPlayerByName(name) {
+        return availablePlayers.find(player => player.name === name);
+    }
+    
+    // Show player details in modal
+    function showPlayerDetails(player) {
+        // Update modal title
+        $('#playerModalLabel').text(player.name);
+        
+        // Generate player details HTML
+        const html = `
+            <div class="text-center mb-4">
+                <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto" style="width: 100px; height: 100px;">
+                    <i class="fas fa-user fa-3x text-secondary"></i>
+                </div>
+                <h5 class="mt-3">${player.name}</h5>
+                <p class="text-muted">${player.position} - ${player.team}</p>
+            </div>
+            
+            <div class="row text-center">
+                <div class="col-3">
+                    <div class="fs-4 fw-bold">${player.stats.points}</div>
+                    <div class="small text-muted">PPG</div>
+                </div>
+                <div class="col-3">
+                    <div class="fs-4 fw-bold">${player.stats.rebounds}</div>
+                    <div class="small text-muted">RPG</div>
+                </div>
+                <div class="col-3">
+                    <div class="fs-4 fw-bold">${player.stats.assists}</div>
+                    <div class="small text-muted">APG</div>
+                </div>
+                <div class="col-3">
+                    <div class="fs-4 fw-bold">${player.stats.fieldGoalPct}%</div>
+                    <div class="small text-muted">FG%</div>
+                </div>
+            </div>
+            
+            <hr>
+            
+            <div class="mb-3">
+                <label class="form-label">Select Position:</label>
+                <select class="form-select" id="player-position-select">
+                    <option value="PG" ${player.position === 'PG' ? 'selected' : ''}>Point Guard (PG)</option>
+                    <option value="SG" ${player.position === 'SG' ? 'selected' : ''}>Shooting Guard (SG)</option>
+                    <option value="SF" ${player.position === 'SF' ? 'selected' : ''}>Small Forward (SF)</option>
+                    <option value="PF" ${player.position === 'PF' ? 'selected' : ''}>Power Forward (PF)</option>
+                    <option value="C" ${player.position === 'C' ? 'selected' : ''}>Center (C)</option>
+                </select>
+            </div>
+        `;
+        
+        // Update modal body
+        $('#playerModalBody').html(html);
+        
+        // Show the modal
+        $('#playerModal').modal('show');
+    }
+    
+    // Add player to lineup
+    function addPlayerToLineup(player) {
+        // Get selected position from the modal
+        const position = $('#player-position-select').val();
+        
+        // Update lineup object
+        currentLineup[position] = player;
+        
+        // Update the UI
+        const $slot = $(`.player-slot[data-position="${position}"]`);
+        $slot.empty().addClass('filled');
+        $slot.append(`
+            <div class="text-center">
+                <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto" style="width: 40px; height: 40px;">
+                    <i class="fas fa-user text-primary"></i>
+                </div>
+                <div class="small mt-1">${player.name}</div>
+            </div>
+            <input type="hidden" name="player_${position.toLowerCase()}" id="player_${position.toLowerCase()}" value="${player.name}">
+        `);
+        
+        // Check if lineup is complete
+        checkLineupComplete();
+    }
+    
+    // Reset lineup
+    function resetLineup() {
+        // Reset lineup object
+        currentLineup = {
+            PG: null,
+            SG: null,
+            SF: null,
+            PF: null,
+            C: null
+        };
+        
+        // Reset UI
+        $('.player-slot').each(function() {
+            const position = $(this).data('position');
+            $(this).removeClass('filled').html(`
+                <i class="fas fa-plus text-muted"></i>
+                <input type="hidden" name="player_${position.toLowerCase()}" id="player_${position.toLowerCase()}" value="">
+            `);
+        });
+        
+        // Hide analysis results
+        $('#analysis-results').hide();
+    }
+    
+    // Search players
+    function searchPlayers() {
+        const query = $('#player-search').val().toLowerCase();
+        
+        if (query) {
+            const filteredPlayers = availablePlayers.filter(player => 
+                player.name.toLowerCase().includes(query) || 
+                player.team.toLowerCase().includes(query)
+            );
+            
+            renderAvailablePlayers(filteredPlayers);
+        } else {
+            renderAvailablePlayers(availablePlayers);
+        }
+    }
+    
+    // Filter players by position
+    function filterPlayersByPosition() {
+        if (currentPositionFilter === 'all') {
+            renderAvailablePlayers(availablePlayers);
+        } else {
+            const filteredPlayers = availablePlayers.filter(player => 
+                player.position === currentPositionFilter
+            );
+            
+            renderAvailablePlayers(filteredPlayers);
+        }
+    }
+    
+    // Check if lineup is complete
+    function checkLineupComplete() {
+        const isComplete = Object.values(currentLineup).every(player => player !== null);
+        
+        if (isComplete) {
+            $('#analyze-lineup-btn').removeClass('btn-primary').addClass('btn-success').html('<i class="fas fa-chart-line me-2"></i> Lineup Complete - Analyze Now');
+        } else {
+            $('#analyze-lineup-btn').removeClass('btn-success').addClass('btn-primary').html('<i class="fas fa-chart-line me-2"></i> Analyze Lineup');
+        }
+    }
+    
+    // Analyze lineup
+    function analyzeLineup() {
+        // Check if at least 3 positions are filled
+        const filledPositions = Object.values(currentLineup).filter(player => player !== null).length;
+        
+        if (filledPositions < 3) {
+            alert('Please select at least 3 players for your lineup before analysis.');
+            return;
+        }
+        
+        // Show loading state
+        $('#team-insights').html(`
+            <li class="list-group-item list-group-item-light text-center">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <span class="ms-2">Analyzing team chemistry and performance...</span>
+            </li>
+        `);
+        
+        // Show analysis section
+        $('#analysis-results').show();
+        
+        // Scroll to analysis section
+        $('html, body').animate({
+            scrollTop: $('#analysis-results').offset().top - 100
+        }, 500);
+        
+        // In production, this would be an API call
+        // For now, simulate a delay and generate mock analysis
+        setTimeout(function() {
+            generateMockAnalysis();
+        }, 1500);
+    }
+    
+    // Generate mock analysis
+    function generateMockAnalysis() {
+        // Calculate mock scores
+        const teamScore = calculateMockTeamScore();
+        const offenseScore = calculateMockOffenseScore();
+        const defenseScore = calculateMockDefenseScore();
+        const chemistryScore = calculateMockChemistryScore();
+        
+        // Update UI
+        $('#team-score').text(teamScore.toFixed(1));
+        $('#team-offense').text(offenseScore.toFixed(1));
+        $('#team-defense').text(defenseScore.toFixed(1));
+        $('#team-chemistry').text(chemistryScore.toFixed(1));
+        
+        // Generate team insights
+        generateTeamInsights();
+        
+        // Create radar chart
+        createTeamRadarChart(offenseScore, defenseScore, chemistryScore);
+    }
+    
+    // Calculate mock team score
+    function calculateMockTeamScore() {
+        let totalPoints = 0;
+        let count = 0;
+        
+        // Sum up points from available players
+        Object.values(currentLineup).forEach(player => {
+            if (player) {
+                totalPoints += player.stats.points;
+                count++;
+            }
+        });
+        
+        // Calculate average points
+        const avgPoints = count > 0 ? totalPoints / count : 0;
+        
+        // Scale to a 0-100 score
+        return Math.min(Math.max(avgPoints * 1.5, 60), 95);
+    }
+    
+    // Calculate mock offense score
+    function calculateMockOffenseScore() {
+        let totalPoints = 0;
+        let totalFgPct = 0;
+        let count = 0;
+        
+        // Sum up offensive stats
+        Object.values(currentLineup).forEach(player => {
+            if (player) {
+                totalPoints += player.stats.points;
+                totalFgPct += player.stats.fieldGoalPct;
+                count++;
+            }
+        });
+        
+        // Calculate averages
+        const avgPoints = count > 0 ? totalPoints / count : 0;
+        const avgFgPct = count > 0 ? totalFgPct / count : 0;
+        
+        // Calculate offense score (weighted formula)
+        return Math.min(Math.max((avgPoints * 2 + avgFgPct * 0.3), 60), 98);
+    }
+    
+    // Calculate mock defense score
+    function calculateMockDefenseScore() {
+        let totalRebounds = 0;
+        let count = 0;
+        
+        // Sum up defensive stats
+        Object.values(currentLineup).forEach(player => {
+            if (player) {
+                totalRebounds += player.stats.rebounds;
+                count++;
+            }
+        });
+        
+        // Calculate average rebounds
+        const avgRebounds = count > 0 ? totalRebounds / count : 0;
+        
+        // Add bonus for having a center
+        const centerBonus = currentLineup.C ? 5 : 0;
+        
+        // Calculate defense score
+        return Math.min(Math.max((avgRebounds * 5 + centerBonus), 55), 96);
+    }
+    
+    // Calculate mock chemistry score
+    function calculateMockChemistryScore() {
+        let totalAssists = 0;
+        let count = 0;
+        
+        // Sum up playmaking stats
+        Object.values(currentLineup).forEach(player => {
+            if (player) {
+                totalAssists += player.stats.assists;
+                count++;
+            }
+        });
+        
+        // Calculate average assists
+        const avgAssists = count > 0 ? totalAssists / count : 0;
+        
+        // Add bonus for having a point guard
+        const pgBonus = currentLineup.PG ? 8 : 0;
+        
+        // Add bonus for balanced lineup
+        const balancedBonus = count >= 4 ? 5 : 0;
+        
+        // Calculate chemistry score
+        return Math.min(Math.max((avgAssists * 5 + pgBonus + balancedBonus), 60), 97);
+    }
+    
+    // Generate team insights
+    function generateTeamInsights() {
+        // Get filled positions
+        const filledPositions = Object.entries(currentLineup)
+            .filter(([_, player]) => player !== null)
+            .map(([pos, player]) => ({ position: pos, player: player }));
+        
+        // Generate insights based on lineup
+        let insights = [];
+        
+        // Check if lineup has a point guard
+        if (currentLineup.PG) {
+            insights.push(`<li class="list-group-item list-group-item-success"><i class="fas fa-check-circle me-2"></i> Strong playmaking with ${currentLineup.PG.name} at point guard (${currentLineup.PG.stats.assists} APG).</li>`);
+        } else {
+            insights.push(`<li class="list-group-item list-group-item-warning"><i class="fas fa-exclamation-triangle me-2"></i> No dedicated point guard might limit playmaking options.</li>`);
+        }
+        
+        // Check if lineup has a center
+        if (currentLineup.C) {
+            insights.push(`<li class="list-group-item list-group-item-success"><i class="fas fa-check-circle me-2"></i> Good interior presence with ${currentLineup.C.name} at center (${currentLineup.C.stats.rebounds} RPG).</li>`);
+        } else {
+            insights.push(`<li class="list-group-item list-group-item-warning"><i class="fas fa-exclamation-triangle me-2"></i> Lack of a true center might create rebounding challenges.</li>`);
+        }
+        
+        // Check scoring potential
+        const scorers = filledPositions.filter(item => item.player.stats.points > 25);
+        if (scorers.length >= 2) {
+            const scorerNames = scorers.map(item => item.player.name).join(' and ');
+            insights.push(`<li class="list-group-item list-group-item-success"><i class="fas fa-check-circle me-2"></i> Multiple high-scoring options with ${scorerNames}.</li>`);
+        } else if (scorers.length === 1) {
+            insights.push(`<li class="list-group-item list-group-item-info"><i class="fas fa-info-circle me-2"></i> Offense may rely heavily on ${scorers[0].player.name} for scoring.</li>`);
+        } else {
+            insights.push(`<li class="list-group-item list-group-item-warning"><i class="fas fa-exclamation-triangle me-2"></i> This lineup may struggle to generate consistent offense.</li>`);
+        }
+        
+        // Check shooting efficiency
+        const efficientShooters = filledPositions.filter(item => item.player.stats.fieldGoalPct > 50);
+        if (efficientShooters.length >= 3) {
+            insights.push(`<li class="list-group-item list-group-item-success"><i class="fas fa-check-circle me-2"></i> Excellent shooting efficiency across multiple positions.</li>`);
+        } else if (efficientShooters.length <= 1) {
+            insights.push(`<li class="list-group-item list-group-item-warning"><i class="fas fa-exclamation-triangle me-2"></i> This lineup may struggle with shooting efficiency.</li>`);
+        }
+        
+        // Add suggestion for improvement if lineup is incomplete
+        if (filledPositions.length < 5) {
+            const missingPositions = Object.keys(currentLineup)
+                .filter(pos => currentLineup[pos] === null)
+                .join(', ');
+            
+            insights.push(`<li class="list-group-item list-group-item-info"><i class="fas fa-info-circle me-2"></i> Complete your lineup by adding players at ${missingPositions} for more accurate analysis.</li>`);
+        }
+        
+        // Update UI
+        $('#team-insights').html(insights.join(''));
+    }
+    
+    // Create team radar chart
+    function createTeamRadarChart(offenseScore, defenseScore, chemistryScore) {
+        const ctx = document.getElementById('teamRadarChart').getContext('2d');
+        
+        // Calculate additional metrics
+        const scoringScore = Object.values(currentLineup)
+            .filter(player => player !== null)
+            .reduce((sum, player) => sum + player.stats.points, 0) / 5 * 2;
+        
+        const reboundingScore = Object.values(currentLineup)
+            .filter(player => player !== null)
+            .reduce((sum, player) => sum + player.stats.rebounds, 0) / 5 * 5;
+            
+        const playmakingScore = Object.values(currentLineup)
+            .filter(player => player !== null)
+            .reduce((sum, player) => sum + player.stats.assists, 0) / 5 * 5;
+        
+        // Create the chart
+        if (window.teamRadarChart) {
+            window.teamRadarChart.destroy();
+        }
+        
+        window.teamRadarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['Offense', 'Defense', 'Chemistry', 'Scoring', 'Rebounding', 'Playmaking'],
+                datasets: [{
+                    label: 'Team Strengths',
+                    data: [
+                        offenseScore, 
+                        defenseScore, 
+                        chemistryScore, 
+                        Math.min(scoringScore, 100), 
+                        Math.min(reboundingScore, 100), 
+                        Math.min(playmakingScore, 100)
+                    ],
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgb(54, 162, 235)',
+                    pointBackgroundColor: 'rgb(54, 162, 235)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                scales: {
+                    r: {
+                        angleLines: {
+                            display: true
+                        },
+                        suggestedMin: 0,
+                        suggestedMax: 100,
+                        ticks: {
+                            stepSize: 20
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Populate opponent dropdown
+    function populateOpponentDropdown() {
+        let options = '<option value="">Select Opponent Team</option>';
+        
+        nbaTeams.forEach(team => {
+            options += `<option value="${team}">${team}</option>`;
+        });
+        
+        $('#opponent-select').html(options);
+    }
+    
+    // Preload players from URL parameter
+    function preloadPlayers(playerNames) {
+        playerNames.forEach(name => {
+            const player = findPlayerByName(name);
+            if (player) {
+                // Try to assign to the player's natural position first
+                const position = player.position;
+                
+                if (!currentLineup[position]) {
+                    currentLineup[position] = player;
+                    
+                    // Update the UI
+                    const $slot = $(`.player-slot[data-position="${position}"]`);
+                    $slot.empty().addClass('filled');
+                    $slot.append(`
+                        <div class="text-center">
+                            <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto" style="width: 40px; height: 40px;">
+                                <i class="fas fa-user text-primary"></i>
+                            </div>
+                            <div class="small mt-1">${player.name}</div>
+                        </div>
+                        <input type="hidden" name="player_${position.toLowerCase()}" id="player_${position.toLowerCase()}" value="${player.name}">
+                    `);
+                }
+            }
+        });
+        
+        // Check if lineup is complete
+        checkLineupComplete();
+    }
+</script>
+{% endblock %}
