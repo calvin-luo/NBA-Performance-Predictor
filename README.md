@@ -25,5 +25,5 @@ graph TD
     end
 
     subgraph "Prediction Layer"
-        F -->|ARIMA/SARIMA Analysis| G[Game Predictions]
+        F -->|SARIMA Analysis| G[Game Predictions]
     end
