@@ -1,0 +1,415 @@
+/* 
+ * Stat Lemon - NBA Performance Predictor
+ * Main Stylesheet
+ */
+
+/* ======= Global Styles ======= */
+:root {
+    --primary-color: #007bff;
+    --secondary-color: #6c757d;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --info-color: #17a2b8;
+    --light-color: #f8f9fa;
+    --dark-color: #343a40;
+    --body-bg: #f4f6f9;
+    --card-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    --transition-speed: 0.3s;
+}
+
+body {
+    background-color: var(--body-bg);
+    font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
+    padding-top: 56px;
+    color: #333;
+}
+
+/* Improve focus states for accessibility */
+a:focus, button:focus, input:focus, select:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+.bg-gradient-primary {
+    background: linear-gradient(135deg, var(--primary-color), #0056b3);
+}
+
+/* ======= Navigation ======= */
+.navbar-brand i {
+    margin-right: 8px;
+    color: var(--warning-color);
+}
+
+.navbar-dark .navbar-nav .nav-link {
+    color: rgba(255, 255, 255, 0.85);
+    padding: 0.5rem 1rem;
+    transition: color var(--transition-speed);
+}
+
+.navbar-dark .navbar-nav .nav-link:hover {
+    color: #fff;
+}
+
+/* ======= Cards ======= */
+.card {
+    border-radius: 0.5rem;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: none;
+    box-shadow: var(--card-shadow);
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+    font-weight: 500;
+    border-bottom: none;
+    padding: 1rem 1.25rem;
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.card-header.bg-primary {
+    background: linear-gradient(135deg, var(--primary-color), #0056b3) !important;
+}
+
+/* ======= Buttons ======= */
+.btn {
+    border-radius: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: #0069d9;
+    border-color: #0062cc;
+}
+
+.btn-outline-primary {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+/* ======= Player Cards ======= */
+.player-card {
+    transition: all var(--transition-speed);
+    border: 1px solid #e9ecef;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.player-card:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.player-card.selected {
+    border-color: var(--primary-color);
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+.player-image-placeholder {
+    width: 100px;
+    height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f8f9fa;
+    border-radius: 50%;
+    margin: 0 auto;
+}
+
+.player-stat-box {
+    background-color: #f8f9fa;
+    border-radius: 0.375rem;
+    padding: 0.75rem 1rem;
+    min-width: 80px;
+}
+
+.stat-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    background-color: #f8f9fa;
+    color: #495057;
+    margin-right: 0.25rem;
+    display: inline-block;
+}
+
+/* ======= Court View (Lineup Builder) ======= */
+.court-container {
+    position: relative;
+    background-color: #f8f9fa;
+    background-image: url('/static/img/basketball-court.svg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    height: 500px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+.player-slot {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px dashed #aaa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.player-slot:hover {
+    border-color: var(--primary-color);
+}
+
+.player-slot.filled {
+    border-style: solid;
+    border-color: #28a745;
+    background-color: rgba(255, 255, 255, 0.9);
+}
+
+.player-slot.pg {
+    top: 75%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.player-slot.sg {
+    top: 70%;
+    left: 75%;
+    transform: translate(-50%, -50%);
+}
+
+.player-slot.sf {
+    top: 70%;
+    left: 25%;
+    transform: translate(-50%, -50%);
+}
+
+.player-slot.pf {
+    top: 25%;
+    left: 25%;
+    transform: translate(-50%, -50%);
+}
+
+.player-slot.c {
+    top: 25%;
+    left: 75%;
+    transform: translate(-50%, -50%);
+}
+
+/* ======= Team Comparison Styles ======= */
+.vs-badge {
+    width: 60px;
+    height: 60px;
+    background-color: #f8f9fa;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.25rem;
+}
+
+.predicted-score {
+    margin: 1rem 0;
+}
+
+/* ======= Charts ======= */
+canvas {
+    max-width: 100%;
+    height: auto !important;
+}
+
+/* ======= Tables ======= */
+.table th {
+    font-weight: 600;
+    border-top: none;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+/* ======= Forms ======= */
+.form-control, .form-select {
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ced4da;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Date picker customizations */
+.datepicker table tr td.active {
+    background-color: var(--primary-color) !important;
+}
+
+/* Range slider styling */
+.form-range::-webkit-slider-thumb {
+    background: var(--primary-color);
+}
+
+.form-range::-moz-range-thumb {
+    background: var(--primary-color);
+}
+
+/* ======= Helper Classes ======= */
+.text-truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* ======= Footer ======= */
+footer {
+    margin-top: 4rem;
+    padding: 2rem 0;
+}
+
+footer a {
+    text-decoration: none;
+    transition: color var(--transition-speed);
+}
+
+footer a:hover {
+    text-decoration: underline;
+}
+
+/* ======= Media Queries ======= */
+/* Small devices (landscape phones, 576px and up) */
+@media (max-width: 767.98px) {
+    .card-body {
+        padding: 1rem;
+    }
+    
+    .court-container {
+        height: 400px;
+    }
+    
+    .player-slot {
+        width: 60px;
+        height: 60px;
+    }
+    
+    .vs-badge {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+    }
+    
+    .player-image-placeholder {
+        width: 80px;
+        height: 80px;
+    }
+}
+
+/* Medium devices (tablets, 768px and up) */
+@media (min-width: 768px) and (max-width: 991.98px) {
+    .player-image-placeholder {
+        width: 90px;
+        height: 90px;
+    }
+}
+
+/* Large devices (desktops, 992px and up) */
+@media (min-width: 992px) {
+    /* Enhanced shadows for larger screens */
+    .card {
+        box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.05);
+    }
+}
+
+/* ======= Loading Animations ======= */
+.loading-pulse {
+    position: relative;
+}
+
+.loading-pulse::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.6);
+    animation: pulse 1.5s infinite;
+    border-radius: inherit;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 0.6;
+    }
+    50% {
+        opacity: 0.3;
+    }
+    100% {
+        opacity: 0.6;
+    }
+}
+
+/* Animation for basketball icon */
+.fa-basketball-ball.fa-bounce {
+    animation: bounce 1s infinite alternate;
+}
+
+@keyframes bounce {
+    from {
+        transform: translateY(0);
+    }
+    to {
+        transform: translateY(-5px);
+    }
+}
+
+/* ======= Custom Scrollbar ======= */
+.available-players {
+    scrollbar-width: thin;
+    scrollbar-color: var(--secondary-color) #f1f1f1;
+}
+
+.available-players::-webkit-scrollbar {
+    width: 8px;
+}
+
+.available-players::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.available-players::-webkit-scrollbar-thumb {
+    background-color: var(--secondary-color);
+    border-radius: 4px;
+}
