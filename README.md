@@ -1,10 +1,10 @@
-# NBA-Performance-Predictor (WIP)
-by: Calvin Luo
+# Stat Lemon
+Lead Developer: Calvin Luo
 
 ## Objective
-A web application that predicts NBA game outcomes based on players' past performances.
+StatLemon.app is an NBA analytics sandbox tool that uses SARIMA time series modeling to provide predictive insights for fantasy basketball players.
 
-## Data Flow
+## Methodology
 ```mermaid
 graph TD
     subgraph "Data Collection Layer"
