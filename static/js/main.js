@@ -57,6 +57,11 @@ $(document).ready(function() {
     
     // Handle mobile menu
     initMobileMenu();
+    
+    // Load today's games if the container exists
+    if ($('#today-games').length > 0) {
+        loadTodayGames();
+    }
 });
 
 // ======= Handle Player Search =======
@@ -374,6 +379,121 @@ function submitLineupPrediction(playerNames, opponent = '') {
             }
         });
     });
+}
+
+/**
+ * Fetch today's games from API
+ * @returns {Promise} Promise resolving to games data
+ */
+function fetchTodayGames() {
+    return new Promise((resolve, reject) => {
+        // Make the request
+        $.ajax({
+            url: '/api/today_games',
+            method: 'GET',
+            dataType: 'json',
+            success: function(data) {
+                resolve(data);
+            },
+            error: function(xhr, status, error) {
+                console.error('Error fetching today\'s games:', error);
+                reject(error);
+            }
+        });
+    });
+}
+
+/**
+ * Load and display today's games
+ */
+function loadTodayGames() {
+    // Show loading state
+    $('#today-games').html(`
+        <tr>
+            <td colspan="5" class="text-center py-3">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading today's games...</p>
+            </td>
+        </tr>
+    `);
+    
+    // Fetch games
+    fetchTodayGames()
+        .then(function(data) {
+            // Process games data
+            let gamesHtml = '';
+            
+            // Check if we have games data
+            if (data.games && data.games.length > 0) {
+                // Process each game
+                data.games.forEach(function(game) {
+                    // Create team logos with error handling
+                    const homeTeamLogo = `<img src="/static/img/teams/${game.home_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.home_team}" onerror="this.onerror=null; this.src='/static/img/placeholder-team.png';">`;
+                    const awayTeamLogo = `<img src="/static/img/teams/${game.away_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.away_team}" onerror="this.onerror=null; this.src='/static/img/placeholder-team.png';">`;
+                    
+                    // Format team records (if available)
+                    const homeRecord = game.home_record || 'N/A';
+                    const awayRecord = game.away_record || 'N/A';
+                    
+                    // Add row for this game
+                    gamesHtml += `
+                        <tr>
+                            <td>${game.game_time || 'TBD'}</td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    ${awayTeamLogo}
+                                    <span class="ms-2">${game.away_team}</span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    ${homeTeamLogo}
+                                    <span class="ms-2">${game.home_team}</span>
+                                </div>
+                            </td>
+                            <td>${game.venue || 'TBD'}</td>
+                            <td>${awayRecord} / ${homeRecord}</td>
+                        </tr>
+                    `;
+                });
+                
+                // Update the games count
+                $('#games-count').text(`${data.games.length} Games`);
+            } else {
+                // No games found
+                gamesHtml = `
+                    <tr>
+                        <td colspan="5" class="text-center py-3">
+                            <i class="fas fa-basketball-ball fa-3x text-muted mb-3"></i>
+                            <h5>No games scheduled for today</h5>
+                            <p class="text-muted">Check back later or view the full schedule.</p>
+                        </td>
+                    </tr>
+                `;
+                
+                // Update games count
+                $('#games-count').text('0 Games');
+            }
+            
+            // Update the table
+            $('#today-games').html(gamesHtml);
+        })
+        .catch(function(error) {
+            // Show error
+            $('#today-games').html(`
+                <tr>
+                    <td colspan="5" class="text-center py-3">
+                        <div class="text-danger">
+                            <i class="fas fa-exclamation-circle fa-3x mb-3"></i>
+                            <h5>Error loading games</h5>
+                            <p>Please try again later.</p>
+                        </div>
+                    </td>
+                </tr>
+            `);
+        });
 }
 
 // ======= Chart Helper Functions =======
