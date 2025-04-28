@@ -46,6 +46,64 @@ class Database:
             if conn:
                 conn.close()
     
+    def get_game(self, game_id: str) -> Optional[Dict[str, Any]]:
+        """Get a game by its ID."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM games WHERE game_id = ?", (game_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def insert_game(self, game: Dict[str, Any]) -> None:
+        """Insert a new game."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO games (game_id, home_team, away_team, game_date, game_time, venue) VALUES (?, ?, ?, ?, ?, ?)",
+                (game['game_id'], game['home_team'], game['away_team'], game['game_date'], game['game_time'], game.get('venue', ''))
+            )
+            conn.commit()
+
+    def update_game(self, game_id: str, game: Dict[str, Any]) -> None:
+        """Update an existing game."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE games SET home_team = ?, away_team = ?, game_date = ?, game_time = ?, venue = ? WHERE game_id = ?",
+                (game['home_team'], game['away_team'], game['game_date'], game['game_time'], game.get('venue', ''), game_id)
+            )
+            conn.commit()
+
+    def get_games_by_date(self, date: str) -> List[Dict[str, Any]]:
+        """Get all games for a specific date."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM games WHERE game_date = ?", (date,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def get_lineups_by_date(self, date: str) -> List[Dict[str, Any]]:
+        """Get all lineups for games on a specific date."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT p.* FROM players p JOIN games g ON p.game_id = g.game_id WHERE g.game_date = ?",
+                (date,)
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        
+    def get_team_lineup(self, team_name: str, game_id: str) -> List[Dict[str, Any]]:
+        """Get the lineup for a specific team in a specific game."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM players WHERE team = ? AND game_id = ?",
+                (team_name, game_id)
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+    
     def initialize_database(self) -> None:
         """Create minimal tables for storing today's games and lineups."""
         with self.get_connection() as conn:

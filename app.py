@@ -23,6 +23,8 @@ app = Flask(__name__)
 
 # Initialize components
 db = Database()
+nba_scraper = NBAApiScraper(db)
+rotowire_scraper = RotowireScraper(db)
 stats_collector = PlayerStatsCollector()
 time_series_analyzer = PlayerTimeSeriesAnalyzer(min_games=10)
 game_predictor = GamePredictor(min_games=10)
@@ -349,6 +351,26 @@ def api_today_games():
         }), 500
 
 
+def scrape_data():
+    """Scrape today's games and lineups."""
+    logger.info("Starting data scraping process")
+    
+    try:
+        # Scrape games from NBA API
+        num_games = nba_scraper.scrape_and_save_games(days_ahead=0)
+        logger.info(f"Scraped {num_games} games from NBA API")
+        
+        # Scrape lineups from Rotowire
+        num_lineups = rotowire_scraper.scrape_and_save_lineups(date_type='today')
+        logger.info(f"Scraped {num_lineups} lineups from Rotowire")
+        
+        return num_games > 0
+        
+    except Exception as e:
+        logger.error(f"Error scraping data: {str(e)}")
+        return False
+
+
 @app.route('/api/team_prediction')
 def api_team_prediction():
     """API endpoint for team performance prediction."""
@@ -456,6 +478,9 @@ def server_error(e):
 if __name__ == '__main__':
     # Make sure the database is initialized
     db.initialize_database()
+    
+    # Scrape data
+    scrape_data()
     
     # Start the Flask app in debug mode
     app.run(debug=True, host='0.0.0.0')
