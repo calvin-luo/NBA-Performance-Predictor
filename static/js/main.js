@@ -34,12 +34,33 @@ const CHART_COLORS = {
     grayLight: 'rgba(108, 117, 125, 0.2)'
 };
 
+
 // Global chart defaults
 if (typeof Chart !== 'undefined') {
     Chart.defaults.font.family = "'Roboto', 'Segoe UI', Arial, sans-serif";
     Chart.defaults.color = '#666';
     Chart.defaults.animation.duration = 1000;
 }
+
+// === StatLemon fantasy-relevant metric order (Tasks 8 & 9) ===
+const STATLEMON_METRICS = [
+    'MINUTES_PLAYED', 'PTS', 'REB', 'AST', 'STL',
+    'BLK', 'FGM', 'FGA', 'FG3M'
+];
+
+// Friendly labels used by updatePlayerOverview()
+const METRIC_LABELS = {
+    MINUTES_PLAYED: 'Minutes',
+    PTS: 'Points',
+    REB: 'Rebounds',
+    AST: 'Assists',
+    STL: 'Steals',
+    BLK: 'Blocks',
+    FGM: 'FG Made',
+    FGA: 'FG Att',
+    FG3M: '3-Pointers'
+};
+
 
 // ======= Document Ready =======
 $(document).ready(function() {
@@ -672,6 +693,35 @@ function createDoughnutChart(canvasId, labels, data, colors, title = '') {
     
     return window[canvasId + 'Chart'];
 }
+
+/**
+ * Build badge cards for the Overview tab – minutes & volume stats first.
+ * @param {Array|Object} statsArray  – raw stats from /api/player_stats
+ */
+function updatePlayerOverview(statsArray) {
+    if (!statsArray || statsArray.length === 0) return;
+    const latest = statsArray[0];                 // most recent game
+    const row = $('#overview-cards');
+    row.empty();
+    STATLEMON_METRICS.forEach(key => {
+        const value = latest[key] ?? null;
+        if (value === null) return;               // skip missing
+        const label = METRIC_LABELS[key] || key;
+        const display = (key === 'FG_PCT' || key === 'TS_PCT')
+            ? (value * 100).toFixed(1) + '%'
+            : value.toFixed(1);
+        row.append(/* html */`
+          <div class="col-6 col-md-3">
+            <div class="card text-center shadow-sm h-100">
+              <div class="card-body py-3">
+                <h6 class="mb-1">${label}</h6>
+                <p class="display-6 fw-bold mb-0">${display}</p>
+              </div>
+            </div>
+          </div>`);
+    });
+}
+
 
 // ======= Player Utility Functions =======
 

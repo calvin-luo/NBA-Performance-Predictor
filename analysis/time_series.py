@@ -37,40 +37,46 @@ class PlayerTimeSeriesAnalyzer:
     - Detects player-specific patterns and trends
     """
     
-    def __init__(self, min_games: int = 10, max_games: int = 30):
-        """
-        Initialize the time series analyzer.
-        
-        Args:
-            min_games: Minimum number of games needed for reliable analysis
-            max_games: Maximum number of games to consider for time series analysis
+    def __init__(self, min_games: int = 8, max_games: int = 30):
+        """Create a new analyzer.
+
+        Parameters
+        ----------
+        min_games : int, default 8
+            Minimum recent games required to fit a model (lowered from 10 so
+            bench contributors aren’t ignored).
+        max_games : int, default 30
+            Maximum historical games considered.
         """
         self.min_games = min_games
         self.max_games = max_games
-        
-        # Default SARIMA parameters
-        self.default_order = (1, 1, 1)  # p, d, q (non-seasonal components)
-        self.default_seasonal_order = (1, 0, 1, 5)  # P, D, Q, S (seasonal components)
-        
-        # Track fitted models for each player and metric
-        self.fitted_models = {}
-        
-        # Key metrics to analyze
-        self.key_metrics = [
-            'PTS_PER_MIN',
-            'FG_PCT',
-            'TS_PCT',
-            'GAME_SCORE',
-            'PLUS_MINUS',
-            'OFF_RATING',
-            'DEF_RATING'
+
+        # Default SARIMA hyper‑parameters (unchanged)
+        self.default_order = (1, 1, 1)
+        self.default_seasonal_order = (1, 0, 1, 5)
+
+        # Cache of fitted models keyed by “<player>_<metric>”
+        self.fitted_models: dict[str, Any] = {}
+
+        # --------------------------------------------------------------
+        # 𝐅𝐚𝐧𝐭𝐚𝐬𝐲‑𝐟𝐢𝐫𝐬𝐭 𝐦𝐞𝐭𝐫𝐢𝐜 𝐬𝐞𝐭 (Tasks 8 & 9)
+        # minutes & volume → defence → shooting volume → efficiency/impact
+        # --------------------------------------------------------------
+        self.key_metrics: list[str] = [
+            # volume / availability
+            "MINUTES_PLAYED", "PTS", "REB", "AST", "STL", "BLK",
+            # shooting volume
+            "FGM", "FGA",
+            # efficiency / impact
+            "FG_PCT", "TS_PCT", "PLUS_MINUS", "GAME_SCORE",
+            # keep ratings for team‑level work
+            "OFF_RATING", "DEF_RATING",
         ]
-        
-        # Dictionary to store model performance metrics
-        self.model_metrics = {}
-        
-        # Dictionary to track player averages for fallback predictions
-        self.player_averages = {}
+
+        # Track model accuracy / evaluation
+        self.model_metrics: dict[str, dict[str, float]] = {}
+        # Store per‑player fallback averages
+        self.player_averages: dict[str, dict[str, float]] = {}
     
     def preprocess_time_series(self, player_stats: pd.DataFrame) -> Dict[str, pd.Series]:
         """
@@ -824,18 +830,10 @@ class GamePredictor:
     Integrates player statistics collection and time series analysis.
     """
     
-    def __init__(self, min_games: int = 10):
-        """
-        Initialize the game predictor.
-        
-        Args:
-            min_games: Minimum number of games needed for reliable analysis
-        """
-        # Initialize the time series analyzer
+    def __init__(self, min_games: int = 8):
+        # Use revised default min_games so defensive specialists aren’t skipped
         self.time_series_analyzer = PlayerTimeSeriesAnalyzer(min_games=min_games)
-        
-        # Track prediction history
-        self.prediction_history = []
+        self.prediction_history: list[dict[str, Any]] = []
     
     def predict_game(self, game_data: Dict[str, Any], team_players_stats: Dict[str, Dict[str, pd.DataFrame]]) -> Dict[str, Any]:
         """
