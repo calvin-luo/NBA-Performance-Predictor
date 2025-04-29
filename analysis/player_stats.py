@@ -571,216 +571,239 @@ class PlayerStatsCollector:
             self.current_delay = min(self.max_delay, self.current_delay * 2)
             return None
     
-    def calculate_advanced_metrics(
-        self,
-        game_logs: pd.DataFrame,
-        player_id: str | None = None
-    ) -> pd.DataFrame:
+    def calculate_advanced_metrics(self, game_logs: pd.DataFrame, player_id: str = None) -> pd.DataFrame:
         """
-        Calculate advanced and fantasy-relevant metrics from raw game logs.
-
-        Adds/minutes, raw counting stats (PTS, REB, AST, STL, BLK, FGM, FGA),
-        plus existing efficiency / impact numbers.  Uses official NBA
-        “Advanced” dashboard where available, falling back to local calcs.
-
-        Args
-        ----
-        game_logs : DataFrame
-            Raw game-log stats for a player.
-        player_id : str | None
-            NBA API player ID (optional—needed for dashboard pull).
-
-        Returns
-        -------
-        DataFrame
-            Game-by-game stats with new columns ready for time-series work.
+        Calculate advanced metrics from raw game logs.
+        Uses official NBA API metrics where possible, supplemented with calculations when necessary.
+        
+        Args:
+            game_logs: DataFrame with raw game log stats
+            player_id: Player's NBA API ID (optional, for fetching official metrics)
+            
+        Returns:
+            DataFrame with added advanced metrics
         """
-        # ------------------------------------------------------------------ #
-        # Safety – copy incoming frame so caller’s version is untouched
-        # ------------------------------------------------------------------ #
+        # Make a copy to avoid modifying the original
         df = game_logs.copy()
-
+        
         try:
-            # ------------------------------------------------------------------
-            # 1) Ensure numeric columns
-            # ------------------------------------------------------------------
-            numeric_cols = [
-                # core box
-                "MIN", "FGM", "FGA", "FG3M", "FG3A", "FTM", "FTA",
-                "OREB", "DREB", "REB", "AST", "STL", "BLK", "TOV",
-                "PF", "PTS", "PLUS_MINUS",
-                # volume we’ll add explicitly below
-                "FGM", "FGA"
-            ]
+            # Convert necessary columns to numeric format
+            numeric_cols = ['MIN', 'FGM', 'FGA', 'FG3M', 'FG3A', 'FTM', 'FTA', 
+                           'OREB', 'DREB', 'REB', 'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS',
+                           'PLUS_MINUS']
+            
             for col in numeric_cols:
                 if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors="coerce")
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
                 else:
-                    logging.getLogger(__name__).warning(
-                        "Column %s not found in game logs", col
-                    )
-
-            df.fillna(0, inplace=True)
-
-            # ------------------------------------------------------------------
-            # 2) Minutes → float; we’ll keep both raw string & float
-            # ------------------------------------------------------------------
-            df["MINUTES_PLAYED"] = df["MIN"].apply(
-                lambda x: (
-                    float(x.split(":")[0]) + float(x.split(":")[1]) / 60
-                )
-                if isinstance(x, str) and ":" in x
-                else float(x)
+                    logger.warning(f"Column {col} not found in game logs")
+            
+            # Fill NaN values with 0
+            df = df.fillna(0)
+            
+            # Calculate minutes as float (convert '12:34' format to minutes)
+            df['MINUTES_PLAYED'] = df['MIN'].apply(
+                lambda x: float(x.split(':')[0]) + float(x.split(':')[1])/60 if isinstance(x, str) and ':' in x else float(x)
             )
-
-            # ------------------------------------------------------------------
-            # 3) Pull official advanced dashboard if we have a player_id
-            # ------------------------------------------------------------------
-            official = None
+            
+            # Try to fetch official advanced metrics if we have player_id
+            official_metrics = None
             if player_id:
-                official = self.get_player_advanced_metrics(player_id)
-
-            # ------------------------------------------------------------------
-            # 4) Counting metrics – **fantasy emphasis**
-            # ------------------------------------------------------------------
-            # (Already numeric; keep them verbatim for later aggregation)
-
-            # ------------------------------------------------------------------
-            # 5) Derived volume/efficiency metrics
-            # ------------------------------------------------------------------
-            df["FG_PCT"] = np.where(df["FGA"] > 0, df["FGM"] / df["FGA"], 0)
-            df["TS_PCT"] = np.where(
-                (df["FGA"] + 0.44 * df["FTA"]) > 0,
-                df["PTS"] / (2 * (df["FGA"] + 0.44 * df["FTA"])),
-                0,
+                official_metrics = self.get_player_advanced_metrics(player_id)
+            
+            # Calculate or get metrics:
+            
+            # 1. Field Goal Percentage (FG_PCT)
+            # Simple calculation is accurate, keep it even if official metrics are available
+            df['FG_PCT'] = np.where(df['FGA'] > 0, df['FGM'] / df['FGA'], 0)
+            
+            # 2. True Shooting Percentage (TS_PCT)
+            # TS% = PTS / (2 * (FGA + 0.44 * FTA))
+            df['TS_PCT'] = np.where(
+                (df['FGA'] + 0.44 * df['FTA']) > 0,
+                df['PTS'] / (2 * (df['FGA'] + 0.44 * df['FTA'])),
+                0
             )
-            df["PTS_PER_MIN"] = np.where(
-                df["MINUTES_PLAYED"] > 0,
-                df["PTS"] / df["MINUTES_PLAYED"],
-                0,
-            )
-
-            # possessions proxy (needed for ratings fallback)
-            df["POSS"] = df["FGA"] - df["OREB"] + df["TOV"] + 0.44 * df["FTA"]
-
-            # ------------------------------------------------------------------
-            # 6) Usage & ratings (dashboard preferred)
-            # ------------------------------------------------------------------
-            if official is not None and not official.empty:
-                base_usage = float(official["USG_PCT"].iloc[0]) * 100
-                df["USG_RATE"] = base_usage  # simple: per-game variance optional
-
-                off_rtg = float(official["OFF_RATING"].iloc[0])
-                def_rtg = float(official["DEF_RATING"].iloc[0])
-
-                df["OFF_RATING"] = off_rtg
-                df["DEF_RATING"] = def_rtg
+            
+            # 3. Points per Minute - simple calculation
+            df['PTS_PER_MIN'] = np.where(df['MINUTES_PLAYED'] > 0, df['PTS'] / df['MINUTES_PLAYED'], 0)
+            
+            # 4. Plus/Minus already in the data as PLUS_MINUS
+            
+            # 5. Possessions approximation - needed for some calculations
+            df['POSS'] = df['FGA'] - df['OREB'] + df['TOV'] + 0.44 * df['FTA']
+            
+            # We now need to include official rates from player dashboard if available
+            # and use the calculated metrics as fallbacks
+            
+            # If we have official metrics, use representative values for game-level metrics
+            if official_metrics is not None and not official_metrics.empty:
+                # Get overall usage rate from official metrics
+                try:
+                    # Note: Official metrics use USG_PCT instead of USG_RATE
+                    # NBA API returns this as decimal (0.271) rather than percentage (27.1%)
+                    usage_pct = official_metrics['USG_PCT'].iloc[0]
+                    
+                    # Convert from decimal to percentage (0.271 -> 27.1)
+                    base_usage = float(usage_pct) * 100
+                    
+                    # Create game-specific variations around the average usage
+                    # We're creating realistic variation around the average usage
+                    
+                    # Calculate game-specific usage adjustment factor
+                    avg_pts = df['PTS'].mean() if len(df) > 0 else 0
+                    
+                    if avg_pts > 0:
+                        # Calculate a multiplicative factor based on points relative to average
+                        # This creates variation while keeping the overall average close to official rate
+                        df['USG_RATE'] = base_usage * (0.8 + 0.4 * (df['PTS'] / avg_pts))
+                    else:
+                        # If no points data, just use the official rate
+                        df['USG_RATE'] = base_usage
+                    
+                    # Ensure usage stays in a reasonable range (5% to 45%)
+                    df['USG_RATE'] = df['USG_RATE'].clip(5, 45)
+                    
+                    logger.info(f"Applied official usage rate: {base_usage}% with game-specific variations")
+                except (KeyError, IndexError, ValueError) as e:
+                    logger.warning(f"Could not get official USG_PCT: {e}. Using calculated value.")
+                    # Fallback to calculated value
+                    df['USG_RATE'] = np.where(
+                        df['MINUTES_PLAYED'] > 0,
+                        df['FGA'] / df['MINUTES_PLAYED'] * 50,  # Scale to realistic values
+                        20  # Default middle-range value
+                    )
+                    df['USG_RATE'] = df['USG_RATE'].clip(5, 45)  # Keep within realistic bounds
+                
+                # Get offensive and defensive ratings from official metrics
+                try:
+                    off_rtg = official_metrics['OFF_RATING'].iloc[0]
+                    def_rtg = official_metrics['DEF_RATING'].iloc[0]
+                    
+                    # Apply official ratings as baselines with game-specific variations
+                    avg_plus_minus = df['PLUS_MINUS'].mean() if len(df) > 0 else 0
+                    
+                    # For offensive rating, adjust based on points scored relative to average
+                    avg_pts = df['PTS'].mean() if len(df) > 0 else 0
+                    
+                    if avg_pts > 0:
+                        df['OFF_RATING'] = float(off_rtg) * (0.9 + 0.2 * (df['PTS'] / avg_pts))
+                    else:
+                        df['OFF_RATING'] = float(off_rtg)
+                    
+                    # For defensive rating, adjust based on plus/minus
+                    # Better plus/minus suggests better defense in that game
+                    df['DEF_RATING'] = np.where(
+                        df['PLUS_MINUS'] > avg_plus_minus,
+                        float(def_rtg) * 0.95,  # Better defense (lower rating)
+                        float(def_rtg) * 1.05   # Worse defense (higher rating)
+                    )
+                    
+                    logger.info(f"Applied official OFF_RATING: {off_rtg} and DEF_RATING: {def_rtg} with variations")
+                except (KeyError, IndexError, ValueError) as e:
+                    logger.warning(f"Could not get official ratings: {e}. Using calculated values.")
+                    # Fallback to calculated approximations
+                    # Simplified Offensive Rating (points per possession * 100)
+                    df['OFF_RATING'] = np.where(df['POSS'] > 0, 100 * df['PTS'] / df['POSS'], 100)
+                    # Defensive Rating approximation
+                    df['DEF_RATING'] = 100  # League average baseline
+                    # Adjust based on defensive stats and plus/minus
+                    df['DEF_RATING'] += np.where(df['PLUS_MINUS'] > 0, -5, 5)  # Better/worse defense
+                    df['DEF_RATING'] -= (df['STL'] + df['BLK'] * 0.5 - df['PF'] * 0.25) / 2  # Impact of defensive stats
+                    # Keep in realistic range (85-120)
+                    df['DEF_RATING'] = df['DEF_RATING'].clip(85, 120)
             else:
-                # fallback
-                df["USG_RATE"] = np.where(
-                    df["MINUTES_PLAYED"] > 0,
-                    df["FGA"] / df["MINUTES_PLAYED"] * 50,
-                    20,
-                ).clip(5, 45)
-
-                df["OFF_RATING"] = np.where(
-                    df["POSS"] > 0, 100 * df["PTS"] / df["POSS"], 100
+                # No official metrics available, use calculated approximations
+                logger.warning("No official metrics available. Using calculated approximations.")
+                
+                # Usage Rate approximation
+                df['USG_RATE'] = np.where(
+                    df['MINUTES_PLAYED'] > 0,
+                    df['FGA'] / df['MINUTES_PLAYED'] * 50,  # Scale to realistic values
+                    20  # Default middle-range value
                 )
-                df["DEF_RATING"] = 100  # neutral – could refine with on/off data
-
-            # ------------------------------------------------------------------
-            # 7) Hollinger Game Score – remains valuable context
-            # ------------------------------------------------------------------
-            df["GAME_SCORE"] = (
-                df["PTS"]
-                + 0.4 * df["FGM"]
-                - 0.7 * df["FGA"]
-                - 0.4 * (df["FTA"] - df["FTM"])
-                + 0.7 * df["OREB"]
-                + 0.3 * df["DREB"]
-                + df["STL"]
-                + 0.7 * df["AST"]
-                + 0.7 * df["BLK"]
-                - 0.4 * df["PF"]
-                - df["TOV"]
+                df['USG_RATE'] = df['USG_RATE'].clip(5, 45)  # Keep within realistic bounds
+                
+                # Simplified Offensive Rating (points per possession * 100)
+                df['OFF_RATING'] = np.where(df['POSS'] > 0, 100 * df['PTS'] / df['POSS'], 100)
+                
+                # Defensive Rating approximation
+                df['DEF_RATING'] = 100  # League average baseline
+                # Adjust based on defensive stats and plus/minus
+                df['DEF_RATING'] += np.where(df['PLUS_MINUS'] > 0, -5, 5)  # Better/worse defense
+                df['DEF_RATING'] -= (df['STL'] + df['BLK'] * 0.5 - df['PF'] * 0.25) / 2  # Impact of defensive stats
+                # Keep in realistic range (85-120)
+                df['DEF_RATING'] = df['DEF_RATING'].clip(85, 120)
+            
+            # 7. Game Score (John Hollinger's formula) - always calculated locally
+            # GmSc = PTS + 0.4*FGM - 0.7*FGA - 0.4*(FTA-FTM) + 0.7*OREB + 0.3*DREB + STL + 0.7*AST + 0.7*BLK - 0.4*PF - TOV
+            df['GAME_SCORE'] = (
+                df['PTS'] + 0.4 * df['FGM'] - 0.7 * df['FGA'] - 0.4 * (df['FTA'] - df['FTM']) 
+                + 0.7 * df['OREB'] + 0.3 * df['DREB'] + df['STL'] + 0.7 * df['AST'] 
+                + 0.7 * df['BLK'] - 0.4 * df['PF'] - df['TOV']
             )
-
-            # Assist-to-Turnover for completeness
-            df["AST_TO_RATIO"] = np.where(df["TOV"] > 0, df["AST"] / df["TOV"], df["AST"])
-
+            
+            # 8. Assist-to-Turnover Ratio - simple calculation
+            df['AST_TO_RATIO'] = np.where(df['TOV'] > 0, df['AST'] / df['TOV'], df['AST'])
+            
             return df
-
-        except Exception as exc:
-            logging.getLogger(__name__).error(
-                "Error calculating advanced metrics: %s", exc, exc_info=True
-            )
-            return game_logs  # fallback – return unmodified
-
-
-    def get_player_stats(
-        self,
-        player_name: str,
-        num_games: int = 30
-    ) -> pd.DataFrame | None:
+            
+        except Exception as e:
+            logger.error(f"Error calculating advanced metrics: {str(e)}")
+            return game_logs  # Return original if calculation fails
+    
+    def get_player_stats(self, player_name: str, num_games: int = 30) -> Optional[pd.DataFrame]:
         """
-        Pull recent game logs, inject advanced + fantasy-relevant stats,
-        and return a trimmed DataFrame ready for time-series analysis.
-
-        New in overhaul:
-        • Includes STL, BLK, raw PTS/REB/AST, FGM/FGA, MINUTES_PLAYED
-        • Orders columns so fantasy-volume metrics appear first.
+        Retrieve and process player stats for time series analysis.
+        Uses official NBA advanced metrics where possible.
+        Handles rookies and players with limited games appropriately.
+        
+        Args:
+            player_name: Player's full name
+            num_games: Number of recent games to retrieve (will use all available if fewer)
+            
+        Returns:
+            DataFrame with time series compatible stats or None if retrieval fails
         """
-        logger = logging.getLogger(__name__)
-        logger.info("Retrieving stats for player: %s", player_name)
-
-        # ------------------------------------------------------------------ #
-        # Identify player; abort if not found
-        # ------------------------------------------------------------------ #
+        # Log the start of player stats retrieval
+        logger.info(f"Retrieving stats for player: {player_name}")
+        
+        # Get player ID first
         player_id = self.get_player_id(player_name)
         if not player_id:
-            logger.warning("Could not find player ID for %s", player_name)
+            logger.warning(f"Could not find player ID for: {player_name}")
             return None
-
-        # ------------------------------------------------------------------ #
-        # Raw game logs (handles rookies inside helper)
-        # ------------------------------------------------------------------ #
+            
+        # Get basic game logs
         game_logs = self.get_recent_game_logs(player_name, num_games)
         if game_logs is None:
-            logger.warning("No game logs for %s", player_name)
+            logger.warning(f"No game logs found for player: {player_name}")
             return None
-
-        # ------------------------------------------------------------------ #
-        # Enrich with advanced & volume metrics
-        # ------------------------------------------------------------------ #
-        enriched = self.calculate_advanced_metrics(game_logs, player_id)
-
-        if enriched is None or enriched.empty:
-            logger.warning("Enrichment failed for %s", player_name)
-            return None
-
-        # ------------------------------------------------------------------ #
-        # Final column whitelist – fantasy first, efficiency later
-        # ------------------------------------------------------------------ #
-        ts_columns = [
-            # identifiers
-            "GAME_DATE", "GAME_ID",
-            # fantasy volume / defence
-            "MINUTES_PLAYED", "PTS", "REB", "AST", "STL", "BLK",
-            "FGM", "FGA",
-            # useful rate/impact
-            "FG_PCT", "TS_PCT",
-            "PLUS_MINUS", "GAME_SCORE",
-            "USG_RATE"
-        ]
-        available = [c for c in ts_columns if c in enriched.columns]
-
-        return (
-            enriched[available]
-            .sort_values("GAME_DATE", ascending=False)
-            .reset_index(drop=True)
-        )
-
-
+        
+        # Calculate advanced metrics (with official data where possible)
+        player_stats = self.calculate_advanced_metrics(game_logs, player_id)
+        
+        # Select only the metrics we need for time series analysis
+        if player_stats is not None:
+            # Define columns to keep for time series analysis
+            ts_columns = [
+                'GAME_DATE', 'GAME_ID',  # Identifiers
+                'FG_PCT', 'TS_PCT', 'PTS_PER_MIN',  # Efficiency metrics
+                'PLUS_MINUS', 'OFF_RATING', 'DEF_RATING', 'GAME_SCORE',  # Impact metrics
+                'USG_RATE', 'MINUTES_PLAYED', 'AST_TO_RATIO'  # Usage metrics
+            ]
+            
+            # Keep only columns that exist in the dataframe
+            available_columns = [col for col in ts_columns if col in player_stats.columns]
+            
+            # Filter and sort by date (most recent first)
+            filtered_stats = player_stats[available_columns].sort_values('GAME_DATE', ascending=False)
+            
+            logger.info(f"Successfully retrieved stats for player: {player_name}")
+            return filtered_stats
+        
+        return None
+    
     def get_team_players_stats(self, team_name: str, lineup: List[Dict[str, Any]]) -> Dict[str, pd.DataFrame]:
         """
         Retrieve stats for all players in a team's lineup.

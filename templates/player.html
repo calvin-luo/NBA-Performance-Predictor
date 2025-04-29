@@ -1,259 +1,824 @@
 {% extends "base.html" %}
 
-{# ----------------------------------------- #}
-{#  Player Profile Page – Stat Lemon v2.0   #}
-{#  Implements Tasks 8, 9 & 10 of overhaul  #}
-{# ----------------------------------------- #}
-
-{% block title %}{{ player_name }} – Player Profile | Stat Lemon{% endblock %}
+{% block title %}{{ player_name }} - Stat Lemon Player Analysis{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
-  <div class="col-12">
-    <nav aria-label="breadcrumb">
-      <ol class="breadcrumb mb-0">
-        <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
-        <li class="breadcrumb-item active" aria-current="page">{{ player_name }}</li>
-      </ol>
-    </nav>
-  </div>
+    <div class="col-md-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ player_name }}</li>
+            </ol>
+        </nav>
+    </div>
 </div>
 
-<!-- =======================
-     Player Header          
-     ======================= -->
-<div class="row align-items-center mb-4">
-  <div class="col-md-2 text-center mb-3 mb-md-0">
-    <!-- Dynamic profile picture (NBA head‑shot → initials fallback) -->
-    <div id="player-profile-picture"></div>
-  </div>
-  <div class="col-md-10">
-    <h1 class="display-5 fw-bold mb-1">{{ player_name }}</h1>
-    <p class="text-muted mb-0" id="player-team-position">Loading team &amp; position…</p>
-  </div>
-</div>
-
-<!-- =======================
-     Tabs Navigation        
-     ======================= -->
-<ul class="nav nav-tabs mb-4" id="playerTabs" role="tablist">
-  <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab" aria-controls="overview" aria-selected="true">Overview</button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="fantasy-tab" data-bs-toggle="tab" data-bs-target="#fantasy" type="button" role="tab" aria-controls="fantasy" aria-selected="false">Fantasy Categories</button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="gamelog-tab" data-bs-toggle="tab" data-bs-target="#gamelog" type="button" role="tab" aria-controls="gamelog" aria-selected="false">Recent Games</button>
-  </li>
-</ul>
-
-<div class="tab-content" id="playerTabsContent">
-  <!-- ========= Overview ========= -->
-  <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
-    <div class="row g-4" id="overview-cards">
-      <!-- Metric cards injected via JS (minutes, PTS, REB, AST, STL, BLK, 3PM, FG) -->
-    </div>
-
-    <!-- Radar chart comparing core counting stats per‑game vs league percentiles -->
-    <div class="card mt-4 shadow-sm">
-      <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-        <span>Volume &amp; Defensive Strengths</span>
-        <div id="overview-chart-loader" class="spinner-border spinner-border-sm" role="status"></div>
-      </div>
-      <div class="card-body">
-        <canvas id="volumeRadarChart" height="320"></canvas>
-      </div>
-    </div>
-  </div>
-
-  <!-- ======== Fantasy Categories ======== -->
-  <div class="tab-pane fade" id="fantasy" role="tabpanel" aria-labelledby="fantasy-tab">
-    <div class="row g-4">
-      <div class="col-lg-6">
-        <div class="card shadow-sm h-100">
-          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <span>Category Radar (9‑Cat)</span>
-            <div id="fantasy-radar-loader" class="spinner-border spinner-border-sm" role="status"></div>
-          </div>
-          <div class="card-body">
-            <canvas id="fantasyRadarChart" height="320"></canvas>
-          </div>
-        </div>
-      </div>
-      <div class="col-lg-6">
-        <div class="card shadow-sm h-100">
-          <div class="card-header bg-primary text-white">Percentile Rankings</div>
-          <div class="card-body p-0">
-            <div class="table-responsive">
-              <table class="table table-hover mb-0" id="fantasyPercentileTable">
-                <thead class="table-light">
-                  <tr>
-                    <th>Category</th>
-                    <th class="text-end">Percentile</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <!-- Rows injected via JS -->
-                </tbody>
-              </table>
+<!-- Player Header -->
+<div class="row align-items-center mb-5">
+    <div class="col-md-3 text-center">
+        <div class="player-image-container mb-3">
+            <!-- Placeholder for player image -->
+            <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 180px; height: 180px; margin: 0 auto;">
+                <i class="fas fa-user fa-5x text-secondary"></i>
             </div>
-          </div>
         </div>
-      </div>
+        <!-- API can be added to fetch actual player team and position -->
+        <h6 class="text-muted" id="player-team-position">NBA Player</h6>
     </div>
-  </div>
+    <div class="col-md-9">
+        <h1 class="display-4 fw-bold">{{ player_name }}</h1>
+        <div class="d-flex flex-wrap mt-3 gap-3">
+            <div class="player-stat-box text-center">
+                <span class="player-stat-value fs-3 fw-bold" id="avg-points">-.-</span>
+                <span class="player-stat-label d-block small text-muted">PPG</span>
+            </div>
+            <div class="player-stat-box text-center">
+                <span class="player-stat-value fs-3 fw-bold" id="avg-fg">-.-</span>
+                <span class="player-stat-label d-block small text-muted">FG%</span>
+            </div>
+            <div class="player-stat-box text-center">
+                <span class="player-stat-value fs-3 fw-bold" id="avg-ts">-.-</span>
+                <span class="player-stat-label d-block small text-muted">TS%</span>
+            </div>
+            <div class="player-stat-box text-center">
+                <span class="player-stat-value fs-3 fw-bold" id="avg-plusminus">-.-</span>
+                <span class="player-stat-label d-block small text-muted">+/-</span>
+            </div>
+            <div class="player-stat-box text-center">
+                <span class="player-stat-value fs-3 fw-bold" id="avg-gamescore">-.-</span>
+                <span class="player-stat-label d-block small text-muted">Game Score</span>
+            </div>
+        </div>
+        <div class="mt-4">
+            <a href="{{ url_for('compare_form') }}?player1={{ player_name }}" class="btn btn-primary">Compare With Another Player</a>
+            <button class="btn btn-outline-secondary" id="refresh-stats-btn">
+                <i class="fas fa-sync-alt"></i> Refresh Stats
+            </button>
+        </div>
+    </div>
+</div>
 
-  <!-- ======== Game Log ======== -->
-  <div class="tab-pane fade" id="gamelog" role="tabpanel" aria-labelledby="gamelog-tab">
-    <div class="card shadow-sm">
-      <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-        <span>Last 30 Games</span>
-        <div id="gamelog-loader" class="spinner-border spinner-border-sm" role="status"></div>
-      </div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm table-striped mb-0" id="gameLogTable">
-            <thead class="table-light">
-              <tr>
-                <th>Date</th>
-                <th>OPP</th>
-                <th>MIN</th>
-                <th>PTS</th>
-                <th>REB</th>
-                <th>AST</th>
-                <th>STL</th>
-                <th>BLK</th>
-                <th>3PM</th>
-                <th>FG (M‑A)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <!-- Rows injected via JS -->
-            </tbody>
-          </table>
+<!-- Player Analysis Tabs -->
+<div class="row mb-5">
+    <div class="col-md-12">
+        <ul class="nav nav-tabs" id="playerTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="performance-tab" data-bs-toggle="tab" data-bs-target="#performance" type="button" role="tab" aria-controls="performance" aria-selected="true">Performance</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="prediction-tab" data-bs-toggle="tab" data-bs-target="#prediction" type="button" role="tab" aria-controls="prediction" aria-selected="false">Predictions</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="trends-tab" data-bs-toggle="tab" data-bs-target="#trends" type="button" role="tab" aria-controls="trends" aria-selected="false">Trends</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab" aria-controls="history" aria-selected="false">Game History</button>
+            </li>
+        </ul>
+        <div class="tab-content border border-top-0 rounded-bottom p-4" id="playerTabsContent">
+            <!-- Performance Tab -->
+            <div class="tab-pane fade show active" id="performance" role="tabpanel" aria-labelledby="performance-tab">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4>Key Metrics</h4>
+                        <div class="card">
+                            <div class="card-body">
+                                <canvas id="performanceRadarChart" width="400" height="300"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h4>Recent Performance</h4>
+                        <div class="card">
+                            <div class="card-body">
+                                <canvas id="recentPerformanceChart" width="400" height="300"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Prediction Tab -->
+            <div class="tab-pane fade" id="prediction" role="tabpanel" aria-labelledby="prediction-tab">
+                <div class="row mb-4">
+                    <div class="col-md-8">
+                        <h4>Next Game Projection</h4>
+                        <p class="text-muted">Based on time series analysis of past performance</p>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center justify-content-end">
+                            <label for="opponentSelect" class="me-2">Opponent:</label>
+                            <select class="form-select" id="opponentSelect" style="max-width: 200px;">
+                                <option value="">Select team</option>
+                                <!-- List of teams will be populated via JavaScript -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-4">
+                            <div class="card-body">
+                                <h5 class="card-title">Projected Stats</h5>
+                                <div class="table-responsive">
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th>Metric</th>
+                                                <th>Projection</th>
+                                                <th>Range</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="prediction-table">
+                                            <!-- Will be populated with prediction data -->
+                                            <tr>
+                                                <td colspan="3" class="text-center py-3">
+                                                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                                        <span class="visually-hidden">Loading...</span>
+                                                    </div>
+                                                    <span class="ms-2">Loading predictions...</span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">Forecast Confidence</h5>
+                                <canvas id="predictionRangeChart" width="400" height="300"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Trends Tab -->
+            <div class="tab-pane fade" id="trends" role="tabpanel" aria-labelledby="trends-tab">
+                <div class="row">
+                    <div class="col-md-12 mb-4">
+                        <h4>Performance Trends</h4>
+                        <div class="d-flex gap-2 mb-3">
+                            <button class="btn btn-sm btn-outline-primary active" data-metric="PTS_PER_MIN">Points</button>
+                            <button class="btn btn-sm btn-outline-primary" data-metric="FG_PCT">FG%</button>
+                            <button class="btn btn-sm btn-outline-primary" data-metric="TS_PCT">TS%</button>
+                            <button class="btn btn-sm btn-outline-primary" data-metric="PLUS_MINUS">+/-</button>
+                            <button class="btn btn-sm btn-outline-primary" data-metric="GAME_SCORE">Game Score</button>
+                        </div>
+                        <div class="card">
+                            <div class="card-body">
+                                <canvas id="trendChart" width="800" height="400"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4>Performance by Opponent</h4>
+                        <div class="card">
+                            <div class="card-body">
+                                <canvas id="opponentPerformanceChart" width="400" height="300"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h4>Home vs. Away</h4>
+                        <div class="card">
+                            <div class="card-body">
+                                <canvas id="homeAwayChart" width="400" height="300"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Game History Tab -->
+            <div class="tab-pane fade" id="history" role="tabpanel" aria-labelledby="history-tab">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Game</th>
+                                <th>MIN</th>
+                                <th>FG%</th>
+                                <th>PTS</th>
+                                <th>+/-</th>
+                                <th>GAME SCORE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="game-history">
+                            <!-- Will be populated with game history data -->
+                            <tr>
+                                <td colspan="7" class="text-center py-3">
+                                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <span class="ms-2">Loading game history...</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
-  </div>
+</div>
+
+<!-- Similar Players Section -->
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <h4>Similar Players</h4>
+        <div class="row" id="similar-players">
+            <!-- Will be populated with similar players -->
+            <div class="col-12 text-center py-3">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <span class="ms-2">Finding similar players...</span>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
-{% block scripts %}
-  {{ super() }}
-  <script>
-    // -------------------------------------------
-    //  Client‑side Controller for Player Profile
-    // -------------------------------------------
-    (function() {
-      const playerName = "{{ player_name|escapejs }}";
-
-      // Inject dynamic profile picture
-      document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('player-profile-picture').innerHTML = generatePlayerProfilePicture(playerName, 140);
-      });
-
-    // ----- PREDICTIONS (keep for the radar) -----
-    fetchPlayerPredictions(playerName)
-    .then(data => {
-        buildVolumeRadar(data);      // radar needs forecast
-    })
-    .catch(() => showAlert('Unable to load predictions.', 'danger'))
-    .finally(() => document.getElementById('overview-chart-loader').classList.add('d-none'));
-
-    // ----- STATS (drives the cards + game log) -----
-    fetchPlayerStats(playerName)
-    .then(data => {
-        updatePlayerOverview(data.stats);   // <-- NEW LINE
-        populateGameLog(data.stats);
-    })
-    .catch(() => showAlert('Game log unavailable.', 'warning'))
-    .finally(() => document.getElementById('gamelog-loader').classList.add('d-none'));
-
-
-      // -------------- Helpers ------------------
-      function updateOverviewCards(prediction) {
-        const metrics = [
-          { key: 'MINUTES_PLAYED', label: 'Minutes', icon: 'clock' },
-          { key: 'PTS', label: 'Points', icon: 'basketball-ball' },
-          { key: 'REB', label: 'Rebounds', icon: 'table' },
-          { key: 'AST', label: 'Assists', icon: 'handshake' },
-          { key: 'STL', label: 'Steals', icon: 'hand-scissors' },
-          { key: 'BLK', label: 'Blocks', icon: 'ban' },
-          { key: 'FG3M', label: '3‑Pointers', icon: 'bullseye' },
-          { key: 'FGM', label: 'FG Made/Att', icon: 'percentage', twin: 'FGA' }
+{% block extra_js %}
+<script>
+    // Variables to store player data
+    let playerStats = [];
+    let playerPrediction = {};
+    let currentMetric = 'PTS_PER_MIN';
+    
+    // Charts
+    let performanceRadarChart;
+    let recentPerformanceChart;
+    let predictionRangeChart;
+    let trendChart;
+    
+    // NBA Teams for opponent selection
+    const nbaTeams = [
+        "Atlanta Hawks", "Boston Celtics", "Brooklyn Nets", "Charlotte Hornets",
+        "Chicago Bulls", "Cleveland Cavaliers", "Dallas Mavericks", "Denver Nuggets",
+        "Detroit Pistons", "Golden State Warriors", "Houston Rockets", "Indiana Pacers",
+        "Los Angeles Clippers", "Los Angeles Lakers", "Memphis Grizzlies", "Miami Heat",
+        "Milwaukee Bucks", "Minnesota Timberwolves", "New Orleans Pelicans", "New York Knicks",
+        "Oklahoma City Thunder", "Orlando Magic", "Philadelphia 76ers", "Phoenix Suns",
+        "Portland Trail Blazers", "Sacramento Kings", "San Antonio Spurs", "Toronto Raptors",
+        "Utah Jazz", "Washington Wizards"
+    ];
+    
+    $(document).ready(function() {
+        // Populate opponent dropdown
+        populateOpponentDropdown();
+        
+        // Load player stats
+        loadPlayerStats();
+        
+        // Handle refresh button
+        $('#refresh-stats-btn').click(function() {
+            loadPlayerStats(true);
+        });
+        
+        // Handle opponent selection change
+        $('#opponentSelect').change(function() {
+            const opponent = $(this).val();
+            loadPlayerPrediction(opponent);
+        });
+        
+        // Handle trend metric selection
+        $('[data-metric]').click(function() {
+            $('[data-metric]').removeClass('active');
+            $(this).addClass('active');
+            currentMetric = $(this).data('metric');
+            updateTrendChart();
+        });
+    });
+    
+    // Load player stats
+    function loadPlayerStats(forceRefresh = false) {
+        const endpoint = `/api/player_stats/{{ player_name }}${forceRefresh ? '?refresh=true' : ''}`;
+        
+        $.getJSON(endpoint, function(data) {
+            playerStats = data.stats;
+            
+            // Update player overview
+            updatePlayerOverview();
+            
+            // Create/update charts
+            createPerformanceRadarChart();
+            createRecentPerformanceChart();
+            
+            // Update game history table
+            updateGameHistoryTable();
+            
+            // Load player prediction
+            loadPlayerPrediction();
+            
+            // Create trend chart
+            createTrendChart();
+            
+            // Find similar players
+            findSimilarPlayers();
+        }).fail(function() {
+            alert('Error loading player stats. Please try again.');
+        });
+    }
+    
+    // Load player prediction
+    function loadPlayerPrediction(opponent = '') {
+        const endpoint = `/api/player_prediction/{{ player_name }}${opponent ? '?opponent=' + encodeURIComponent(opponent) : ''}`;
+        
+        $('#prediction-table').html(`
+            <tr>
+                <td colspan="3" class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span class="ms-2">Loading predictions...</span>
+                </td>
+            </tr>
+        `);
+        
+        $.getJSON(endpoint, function(data) {
+            playerPrediction = data.prediction;
+            
+            // Update prediction table
+            updatePredictionTable();
+            
+            // Create prediction range chart
+            createPredictionRangeChart();
+        }).fail(function() {
+            $('#prediction-table').html(`
+                <tr>
+                    <td colspan="3" class="text-center text-danger py-3">
+                        Error loading predictions. Please try again.
+                    </td>
+                </tr>
+            `);
+        });
+    }
+    
+    // Populate opponent dropdown
+    function populateOpponentDropdown() {
+        let options = '<option value="">Select team</option>';
+        nbaTeams.forEach(team => {
+            options += `<option value="${team}">${team}</option>`;
+        });
+        $('#opponentSelect').html(options);
+    }
+    
+    // Update player overview with average stats
+    function updatePlayerOverview() {
+        // Calculate averages
+        const avgPtsPerMin = calculateAverage('PTS_PER_MIN');
+        const avgFgPct = calculateAverage('FG_PCT');
+        const avgTsPct = calculateAverage('TS_PCT');
+        const avgPlusMinus = calculateAverage('PLUS_MINUS');
+        const avgGameScore = calculateAverage('GAME_SCORE');
+        
+        // Update the UI
+        $('#avg-points').text((avgPtsPerMin * 36).toFixed(1)); // Convert to points per 36 min
+        $('#avg-fg').text((avgFgPct * 100).toFixed(1) + '%');
+        $('#avg-ts').text((avgTsPct * 100).toFixed(1) + '%');
+        $('#avg-plusminus').text(avgPlusMinus.toFixed(1));
+        $('#avg-gamescore').text(avgGameScore.toFixed(1));
+    }
+    
+    // Calculate average for a specific metric
+    function calculateAverage(metric) {
+        if (!playerStats || playerStats.length === 0) return 0;
+        
+        const values = playerStats.map(game => parseFloat(game[metric])).filter(val => !isNaN(val));
+        return values.reduce((sum, val) => sum + val, 0) / values.length;
+    }
+    
+    // Create performance radar chart
+    function createPerformanceRadarChart() {
+        const ctx = document.getElementById('performanceRadarChart').getContext('2d');
+        
+        // Calculate percentile values for radar chart (0 to 100 scale)
+        const scoring = calculateAverage('PTS_PER_MIN') * 30; // Scale to reasonable range
+        const efficiency = calculateAverage('TS_PCT') * 100;
+        const impact = (calculateAverage('PLUS_MINUS') + 10) * 5; // Scale and normalize
+        const gameScore = calculateAverage('GAME_SCORE') * 4; // Scale to reasonable range
+        const assistToTo = Math.min(calculateAverage('AST_TO_RATIO') * 10, 100); // Cap at 100
+        
+        if (performanceRadarChart) {
+            performanceRadarChart.destroy();
+        }
+        
+        performanceRadarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['Scoring', 'Efficiency', 'Impact', 'Game Score', 'Ast/TO'],
+                datasets: [{
+                    label: '{{ player_name }}',
+                    data: [scoring, efficiency, impact, gameScore, assistToTo],
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgb(54, 162, 235)',
+                    pointBackgroundColor: 'rgb(54, 162, 235)',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgb(54, 162, 235)'
+                }]
+            },
+            options: {
+                scales: {
+                    r: {
+                        angleLines: {
+                            display: true
+                        },
+                        suggestedMin: 0,
+                        suggestedMax: 100
+                    }
+                }
+            }
+        });
+    }
+    
+    // Create recent performance chart
+    function createRecentPerformanceChart() {
+        const ctx = document.getElementById('recentPerformanceChart').getContext('2d');
+        
+        // Get last 10 games
+        const recentGames = playerStats.slice(0, 10).reverse();
+        const labels = recentGames.map((_, index) => `Game ${index + 1}`);
+        const gameScores = recentGames.map(game => game['GAME_SCORE']);
+        
+        if (recentPerformanceChart) {
+            recentPerformanceChart.destroy();
+        }
+        
+        recentPerformanceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Game Score',
+                    data: gameScores,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Recent Game Scores'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    }
+    
+    // Update prediction table
+    function updatePredictionTable() {
+        if (!playerPrediction || Object.keys(playerPrediction).length === 0) {
+            $('#prediction-table').html(`
+                <tr>
+                    <td colspan="3" class="text-center text-muted py-3">
+                        No prediction data available
+                    </td>
+                </tr>
+            `);
+            return;
+        }
+        
+        let tableHtml = '';
+        
+        // Define metrics to display and their labels
+        const metricsToDisplay = {
+            'PTS_PER_MIN': 'Points (per 36)',
+            'FG_PCT': 'FG%',
+            'TS_PCT': 'TS%',
+            'PLUS_MINUS': 'Plus/Minus',
+            'GAME_SCORE': 'Game Score'
+        };
+        
+        for (const [metric, label] of Object.entries(metricsToDisplay)) {
+            if (playerPrediction[metric]) {
+                const forecast = playerPrediction[metric].forecast;
+                const lower = playerPrediction[metric].lower_bound;
+                const upper = playerPrediction[metric].upper_bound;
+                
+                // Format values based on metric
+                let formattedForecast, formattedRange;
+                
+                if (metric === 'PTS_PER_MIN') {
+                    // Convert to points per 36 minutes
+                    formattedForecast = (forecast * 36).toFixed(1);
+                    formattedRange = `${(lower * 36).toFixed(1)} - ${(upper * 36).toFixed(1)}`;
+                } else if (metric === 'FG_PCT' || metric === 'TS_PCT') {
+                    // Convert to percentage
+                    formattedForecast = (forecast * 100).toFixed(1) + '%';
+                    formattedRange = `${(lower * 100).toFixed(1)}% - ${(upper * 100).toFixed(1)}%`;
+                } else {
+                    // Other metrics
+                    formattedForecast = forecast.toFixed(1);
+                    formattedRange = `${lower.toFixed(1)} - ${upper.toFixed(1)}`;
+                }
+                
+                tableHtml += `
+                    <tr>
+                        <td>${label}</td>
+                        <td class="fw-bold">${formattedForecast}</td>
+                        <td>${formattedRange}</td>
+                    </tr>
+                `;
+            }
+        }
+        
+        if (tableHtml === '') {
+            tableHtml = `
+                <tr>
+                    <td colspan="3" class="text-center text-muted py-3">
+                        No prediction data available
+                    </td>
+                </tr>
+            `;
+        }
+        
+        $('#prediction-table').html(tableHtml);
+    }
+    
+    // Create prediction range chart
+    function createPredictionRangeChart() {
+        const ctx = document.getElementById('predictionRangeChart').getContext('2d');
+        
+        // Prepare data for chart
+        const labels = [];
+        const forecasts = [];
+        const lowerBounds = [];
+        const upperBounds = [];
+        
+        // Define metrics to display and their labels
+        const metricsToDisplay = {
+            'PTS_PER_MIN': 'Points (per 36)',
+            'FG_PCT': 'FG%',
+            'TS_PCT': 'TS%',
+            'PLUS_MINUS': 'Plus/Minus',
+            'GAME_SCORE': 'Game Score'
+        };
+        
+        for (const [metric, label] of Object.entries(metricsToDisplay)) {
+            if (playerPrediction[metric]) {
+                let forecast = playerPrediction[metric].forecast;
+                let lower = playerPrediction[metric].lower_bound;
+                let upper = playerPrediction[metric].upper_bound;
+                
+                // Scale points per minute to points per 36
+                if (metric === 'PTS_PER_MIN') {
+                    forecast *= 36;
+                    lower *= 36;
+                    upper *= 36;
+                }
+                
+                // Convert percentages to 0-100 scale
+                if (metric === 'FG_PCT' || metric === 'TS_PCT') {
+                    forecast *= 100;
+                    lower *= 100;
+                    upper *= 100;
+                }
+                
+                labels.push(label);
+                forecasts.push(forecast);
+                lowerBounds.push(lower);
+                upperBounds.push(upper);
+            }
+        }
+        
+        if (predictionRangeChart) {
+            predictionRangeChart.destroy();
+        }
+        
+        predictionRangeChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Forecast',
+                    data: forecasts,
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                    borderColor: 'rgb(54, 162, 235)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            afterLabel: function(context) {
+                                const index = context.dataIndex;
+                                return `Range: ${lowerBounds[index].toFixed(1)} - ${upperBounds[index].toFixed(1)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+        
+        // Add error bars manually using Chart.js annotation plugin
+        // Note: In production, you'd need to include the annotation plugin
+    }
+    
+    // Create trend chart
+    function createTrendChart() {
+        const ctx = document.getElementById('trendChart').getContext('2d');
+        
+        // Initial data
+        const data = getTrendData(currentMetric);
+        
+        if (trendChart) {
+            trendChart.destroy();
+        }
+        
+        trendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: getMetricLabel(currentMetric),
+                    data: data.values,
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: `${getMetricLabel(currentMetric)} Trend`
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    }
+    
+    // Update trend chart
+    function updateTrendChart() {
+        if (!trendChart) return;
+        
+        const data = getTrendData(currentMetric);
+        
+        trendChart.data.labels = data.labels;
+        trendChart.data.datasets[0].data = data.values;
+        trendChart.data.datasets[0].label = getMetricLabel(currentMetric);
+        trendChart.options.plugins.title.text = `${getMetricLabel(currentMetric)} Trend`;
+        
+        trendChart.update();
+    }
+    
+    // Get trend data for specific metric
+    function getTrendData(metric) {
+        // Get last 20 games in chronological order
+        const games = playerStats.slice(0, 20).reverse();
+        
+        // Extract dates and values
+        const labels = games.map(game => {
+            const date = new Date(game.GAME_DATE);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        });
+        
+        let values = games.map(game => {
+            let value = parseFloat(game[metric]);
+            
+            // Convert PTS_PER_MIN to points per game for better visualization
+            if (metric === 'PTS_PER_MIN') {
+                value *= parseFloat(game.MINUTES_PLAYED); // Convert to points
+            }
+            
+            // Convert percentages to 0-100 scale
+            if (metric === 'FG_PCT' || metric === 'TS_PCT') {
+                value *= 100;
+            }
+            
+            return value;
+        });
+        
+        return { labels, values };
+    }
+    
+    // Get label for metric
+    function getMetricLabel(metric) {
+        const labels = {
+            'PTS_PER_MIN': 'Points',
+            'FG_PCT': 'Field Goal %',
+            'TS_PCT': 'True Shooting %',
+            'PLUS_MINUS': 'Plus/Minus',
+            'GAME_SCORE': 'Game Score'
+        };
+        
+        return labels[metric] || metric;
+    }
+    
+    // Update game history table
+    function updateGameHistoryTable() {
+        if (!playerStats || playerStats.length === 0) {
+            $('#game-history').html(`
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-3">
+                        No game history available
+                    </td>
+                </tr>
+            `);
+            return;
+        }
+        
+        let tableHtml = '';
+        
+        // Process last 20 games
+        const games = playerStats.slice(0, 20);
+        
+        games.forEach(game => {
+            const gameDate = new Date(game.GAME_DATE).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+            
+            const points = (game.PTS_PER_MIN * game.MINUTES_PLAYED).toFixed(0);
+            
+            tableHtml += `
+                <tr>
+                    <td>${gameDate}</td>
+                    <td>${game.GAME_ID}</td>
+                    <td>${game.MINUTES_PLAYED}</td>
+                    <td>${(game.FG_PCT * 100).toFixed(1)}%</td>
+                    <td>${points}</td>
+                    <td>${game.PLUS_MINUS}</td>
+                    <td>${game.GAME_SCORE.toFixed(1)}</td>
+                </tr>
+            `;
+        });
+        
+        $('#game-history').html(tableHtml);
+    }
+    
+    // Find similar players
+    function findSimilarPlayers() {
+        // This would normally be an API call to find similar players
+        // For demo purposes, we'll use placeholder data
+        
+        const placeholders = [
+            { name: "Kevin Durant", team: "Phoenix Suns", similarity: 92 },
+            { name: "Jayson Tatum", team: "Boston Celtics", similarity: 89 },
+            { name: "Kawhi Leonard", team: "Los Angeles Clippers", similarity: 87 },
+            { name: "Paul George", team: "Los Angeles Clippers", similarity: 85 }
         ];
-        const row = document.getElementById('overview-cards');
-        metrics.forEach(m => {
-          const val = getNested(prediction, m.key);
-          const att = m.twin ? getNested(prediction, m.twin) : null;
-          row.insertAdjacentHTML('beforeend', `
-            <div class="col-6 col-md-3">
-              <div class="card text-center shadow-sm h-100">
-                <div class="card-body py-3">
-                  <i class="fas fa-${m.icon} fa-lg text-primary mb-2"></i>
-                  <h5 class="card-title mb-0">${m.label}</h5>
-                  <p class="display-6 fw-bold mb-0">
-                    ${val !== null ? val.toFixed(1) : '--'}${att !== null ? `/<span class="text-muted">${att.toFixed(1)}</span>` : ''}
-                  </p>
+        
+        let html = '';
+        
+        placeholders.forEach(player => {
+            html += `
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; margin: 0 auto;">
+                                    <i class="fas fa-user fa-2x text-secondary"></i>
+                                </div>
+                            </div>
+                            <h5 class="card-title">${player.name}</h5>
+                            <p class="card-text text-muted mb-2">${player.team}</p>
+                            <div class="progress mb-2" style="height: 5px;">
+                                <div class="progress-bar bg-success" role="progressbar" style="width: ${player.similarity}%"></div>
+                            </div>
+                            <p class="small text-muted">${player.similarity}% similar</p>
+                            <a href="/player/${encodeURIComponent(player.name)}" class="btn btn-sm btn-outline-primary">View Profile</a>
+                        </div>
+                    </div>
                 </div>
-              </div>
-            </div>`);
+            `;
         });
-      }
-
-      function buildVolumeRadar(prediction) {
-        const labels = ['PTS', 'REB', 'AST', 'STL', 'BLK', '3PM'];
-        const data = labels.map(l => getNested(prediction, l));
-        createRadarChart('volumeRadarChart', labels, [{
-          label: playerName,
-          data: data,
-          backgroundColor: CHART_COLORS.primaryLight,
-          borderColor: CHART_COLORS.primary,
-          pointBackgroundColor: CHART_COLORS.primary
-        }]);
-      }
-
-      function buildFantasyRadar(data) {
-        const labels = data.categories;
-        createRadarChart('fantasyRadarChart', labels, [{
-          label: 'Percentile',
-          data: data.percentiles,
-          backgroundColor: CHART_COLORS.successLight,
-          borderColor: CHART_COLORS.success,
-          pointBackgroundColor: CHART_COLORS.success
-        }]);
-      }
-
-      function populateFantasyPercentiles(data) {
-        const tbody = document.querySelector('#fantasyPercentileTable tbody');
-        data.categories.forEach((cat, idx) => {
-          const pct = data.percentiles[idx];
-          tbody.insertAdjacentHTML('beforeend', `<tr><td>${cat}</td><td class="text-end">${pct}%</td></tr>`);
-        });
-      }
-
-      function populateGameLog(rows) {
-        const tbody = document.querySelector('#gameLogTable tbody');
-        rows.forEach(g => {
-          tbody.insertAdjacentHTML('beforeend', `<tr>
-            <td>${g.GAME_DATE}</td>
-            <td>${g.OPP}</td>
-            <td>${g.MINUTES_PLAYED.toFixed(1)}</td>
-            <td>${g.PTS}</td>
-            <td>${g.REB}</td>
-            <td>${g.AST}</td>
-            <td>${g.STL}</td>
-            <td>${g.BLK}</td>
-            <td>${g.FG3M}</td>
-            <td>${g.FGM}‑${g.FGA}</td>
-          </tr>`);
-        });
-      }
-
-      function getNested(obj, key) {
-        return obj && obj.player_predictions && obj.player_predictions[playerName] && obj.player_predictions[playerName][key] ? obj.player_predictions[playerName][key].forecast : null;
-      }
-    })();
-  </script>
+        
+        $('#similar-players').html(html);
+    }
+</script>
 {% endblock %}
