@@ -35,7 +35,48 @@ class PlayerTimeSeriesAnalyzer:
     - Accounts for team matchups and other contextual factors
     - Computes confidence intervals for predictions
     - Detects player-specific patterns and trends
+    - Fantasy basketball scoring and projections
     """
+    
+    # Fantasy basketball scoring systems
+    FANTASY_SCORING_SYSTEMS = {
+        # Standard points league scoring
+        'standard_points': {
+            'PTS': 1.0,
+            'REB': 1.2,
+            'AST': 1.5,
+            'STL': 2.0,
+            'BLK': 2.0,
+            'TOV': -1.0,
+            '3PM': 0.5,
+            'DD': 2.0,  # Double-double
+            'TD': 5.0   # Triple-double
+        },
+        # ESPN default scoring
+        'espn_default': {
+            'PTS': 1.0,
+            'REB': 1.0,
+            'AST': 1.0,
+            'STL': 2.0,
+            'BLK': 2.0,
+            'TOV': -1.0,
+            '3PM': 1.0,
+            'DD': 0.0,
+            'TD': 0.0
+        },
+        # Yahoo default scoring
+        'yahoo_default': {
+            'PTS': 1.0,
+            'REB': 1.2,
+            'AST': 1.5,
+            'STL': 3.0,
+            'BLK': 3.0,
+            'TOV': -1.0,
+            '3PM': 0.5,
+            'DD': 0.0,
+            'TD': 0.0
+        }
+    }
     
     def __init__(self, min_games: int = 10, max_games: int = 30):
         """
@@ -55,15 +96,41 @@ class PlayerTimeSeriesAnalyzer:
         # Track fitted models for each player and metric
         self.fitted_models = {}
         
-        # Key metrics to analyze
+        # Key metrics to analyze - expanded for fantasy relevance
         self.key_metrics = [
+            # Traditional metrics
             'PTS_PER_MIN',
             'FG_PCT',
             'TS_PCT',
             'GAME_SCORE',
             'PLUS_MINUS',
             'OFF_RATING',
-            'DEF_RATING'
+            'DEF_RATING',
+            
+            # Fantasy-specific metrics
+            'MINUTES_PLAYED',  # Critical for fantasy
+            'PTS',            # Raw points (not per minute)
+            'REB',            # Rebounds
+            'AST',            # Assists
+            'STL',            # Steals - important for fantasy
+            'BLK',            # Blocks - important for fantasy
+            'TOV',            # Turnovers
+            '3PM',            # Three-pointers made
+            'STOCKS',         # STL + BLK combined
+            'FT_PCT',         # Free throw percentage
+            '3PT_PCT'         # Three-point percentage
+        ]
+        
+        # Fantasy metrics (for calculations)
+        self.fantasy_metrics = [
+            'FANTASY_PTS_STANDARD_POINTS',
+            'FANTASY_PTS_ESPN_DEFAULT',
+            'FANTASY_PTS_YAHOO_DEFAULT'
+        ]
+        
+        # Category league metrics
+        self.category_metrics = [
+            'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG_PCT', 'FT_PCT'
         ]
         
         # Dictionary to store model performance metrics
@@ -104,7 +171,9 @@ class PlayerTimeSeriesAnalyzer:
         processed_series = {}
         
         # Process each key metric if it exists in the data
-        for metric in self.key_metrics:
+        all_metrics = self.key_metrics + self.fantasy_metrics
+        
+        for metric in all_metrics:
             if metric in stats_df.columns:
                 try:
                     # Create time series with game date as index
@@ -349,7 +418,7 @@ class PlayerTimeSeriesAnalyzer:
             return averages
         
         # Calculate averages for each key metric
-        for metric in self.key_metrics:
+        for metric in self.key_metrics + self.fantasy_metrics:
             if metric in player_stats.columns:
                 try:
                     # Get values, convert to numeric, and remove missing values
@@ -384,7 +453,7 @@ class PlayerTimeSeriesAnalyzer:
         # by games against a specific opponent and calculate adjustments
         
         # For now, return a neutral adjustment (1.0 = no adjustment)
-        return {metric: 1.0 for metric in self.key_metrics}
+        return {metric: 1.0 for metric in self.key_metrics + self.fantasy_metrics}
     
     def forecast_player_performance(self, player_name: str, player_stats: pd.DataFrame, 
                                   opponent_team: str = None, num_forecast: int = 1) -> Dict[str, Dict[str, Any]]:
@@ -422,7 +491,9 @@ class PlayerTimeSeriesAnalyzer:
         forecasts = {}
         
         # Process each metric
-        for metric in self.key_metrics:
+        all_metrics = self.key_metrics + self.fantasy_metrics
+        
+        for metric in all_metrics:
             if metric not in time_series_dict:
                 logger.warning(f"Metric {metric} not available for {player_name}")
                 continue
@@ -533,7 +604,219 @@ class PlayerTimeSeriesAnalyzer:
                     
                     logger.info(f"Using average for {player_name} {metric}: {adjusted_value:.3f}")
         
+        # Calculate fantasy points forecasts
+        fantasy_forecasts = self.calculate_fantasy_forecasts(forecasts)
+        forecasts.update(fantasy_forecasts)
+        
         return forecasts
+    
+    def calculate_fantasy_forecasts(self, metric_forecasts: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """
+        Calculate fantasy points forecasts from individual metric forecasts.
+        
+        Args:
+            metric_forecasts: Dictionary of metric forecast results
+            
+        Returns:
+            Dictionary of fantasy points forecasts for different scoring systems
+        """
+        fantasy_forecasts = {}
+        
+        # Check if we have the necessary metrics for calculation
+        required_metrics = ['PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', '3PM']
+        for metric in required_metrics:
+            if metric not in metric_forecasts:
+                logger.warning(f"Missing required metric {metric} for fantasy points calculation")
+                return {}
+        
+        # Calculate fantasy points for each scoring system
+        for system_name, scoring in self.FANTASY_SCORING_SYSTEMS.items():
+            try:
+                # Extract forecasted values
+                pts = metric_forecasts['PTS']['forecast']
+                reb = metric_forecasts['REB']['forecast']
+                ast = metric_forecasts['AST']['forecast']
+                stl = metric_forecasts['STL']['forecast']
+                blk = metric_forecasts['BLK']['forecast']
+                tov = metric_forecasts['TOV']['forecast']
+                threes = metric_forecasts['3PM']['forecast']
+                
+                # Determine if forecast is likely to be a double-double or triple-double
+                # Using a probabilistic approach based on historical averages
+                dd_prob = 0.0
+                td_prob = 0.0
+                
+                # Count categories where player is expected to get 10+
+                cats_over_10 = sum(1 for val in [pts, reb, ast, stl, blk] if val >= 10)
+                
+                # If 2+ categories are 10+, there's a high probability of a double-double
+                if cats_over_10 >= 2:
+                    dd_prob = 0.9
+                # If exactly 1 category is 10+, check if any others are close
+                elif cats_over_10 == 1:
+                    close_to_10 = sum(1 for val in [pts, reb, ast, stl, blk] if 8 <= val < 10)
+                    if close_to_10 >= 1:
+                        dd_prob = 0.4  # Some chance if one category is close
+                
+                # Similar logic for triple-doubles
+                if cats_over_10 >= 3:
+                    td_prob = 0.8
+                elif cats_over_10 == 2:
+                    close_to_10 = sum(1 for val in [pts, reb, ast, stl, blk] if 8 <= val < 10)
+                    if close_to_10 >= 1:
+                        td_prob = 0.3
+                
+                # Calculate expected fantasy points
+                fantasy_pts = (
+                    pts * scoring['PTS'] +
+                    reb * scoring['REB'] +
+                    ast * scoring['AST'] +
+                    stl * scoring['STL'] +
+                    blk * scoring['BLK'] +
+                    tov * scoring['TOV'] +
+                    threes * scoring['3PM'] +
+                    dd_prob * scoring['DD'] +
+                    td_prob * scoring['TD']
+                )
+                
+                # Calculate lower and upper bounds
+                # Use the individual metric bounds to create a range
+                pts_lower = metric_forecasts['PTS']['lower_bound']
+                reb_lower = metric_forecasts['REB']['lower_bound']
+                ast_lower = metric_forecasts['AST']['lower_bound']
+                stl_lower = metric_forecasts['STL']['lower_bound']
+                blk_lower = metric_forecasts['BLK']['lower_bound']
+                tov_upper = metric_forecasts['TOV']['upper_bound']  # Use upper for TOV since it's negative
+                threes_lower = metric_forecasts['3PM']['lower_bound']
+                
+                pts_upper = metric_forecasts['PTS']['upper_bound']
+                reb_upper = metric_forecasts['REB']['upper_bound']
+                ast_upper = metric_forecasts['AST']['upper_bound']
+                stl_upper = metric_forecasts['STL']['upper_bound']
+                blk_upper = metric_forecasts['BLK']['upper_bound']
+                tov_lower = metric_forecasts['TOV']['lower_bound']  # Use lower for TOV since it's negative
+                threes_upper = metric_forecasts['3PM']['upper_bound']
+                
+                # Lower bound calculation
+                fantasy_pts_lower = (
+                    pts_lower * scoring['PTS'] +
+                    reb_lower * scoring['REB'] +
+                    ast_lower * scoring['AST'] +
+                    stl_lower * scoring['STL'] +
+                    blk_lower * scoring['BLK'] +
+                    tov_upper * scoring['TOV'] +  # Note: using upper bound for TOV
+                    threes_lower * scoring['3PM'] +
+                    0.0 * scoring['DD'] +  # Conservative: no DD/TD for lower bound
+                    0.0 * scoring['TD']
+                )
+                
+                # Upper bound calculation
+                fantasy_pts_upper = (
+                    pts_upper * scoring['PTS'] +
+                    reb_upper * scoring['REB'] +
+                    ast_upper * scoring['AST'] +
+                    stl_upper * scoring['STL'] +
+                    blk_upper * scoring['BLK'] +
+                    tov_lower * scoring['TOV'] +  # Note: using lower bound for TOV
+                    threes_upper * scoring['3PM'] +
+                    1.0 * scoring['DD'] +  # Optimistic: full DD/TD for upper bound
+                    (0.5 if td_prob > 0.1 else 0.0) * scoring['TD']
+                )
+                
+                # Add to fantasy forecasts
+                forecast_key = f"FANTASY_PTS_{system_name.upper()}"
+                fantasy_forecasts[forecast_key] = {
+                    'forecast': fantasy_pts,
+                    'lower_bound': fantasy_pts_lower,
+                    'upper_bound': fantasy_pts_upper,
+                    'method': 'calculated',
+                    'confidence': 'medium'
+                }
+                
+                logger.info(f"Calculated {system_name} fantasy points: {fantasy_pts:.2f} [{fantasy_pts_lower:.2f}, {fantasy_pts_upper:.2f}]")
+                
+            except Exception as e:
+                logger.error(f"Error calculating {system_name} fantasy points: {str(e)}")
+                continue
+        
+        return fantasy_forecasts
+    
+    def forecast_fantasy_performance(self, player_name: str, player_stats: pd.DataFrame, 
+                                   system_name: str = 'standard_points', 
+                                   opponent_team: str = None) -> Dict[str, Any]:
+        """
+        Specifically forecast fantasy performance using a specified scoring system.
+        
+        Args:
+            player_name: Name of the player
+            player_stats: DataFrame with player's historical statistics
+            system_name: Fantasy scoring system to use
+            opponent_team: Name of the opponent team (optional)
+            
+        Returns:
+            Dictionary with fantasy forecast details
+        """
+        logger.info(f"Forecasting fantasy performance for {player_name} using {system_name} scoring system")
+        
+        # Get full performance forecast
+        all_forecasts = self.forecast_player_performance(player_name, player_stats, opponent_team)
+        
+        if not all_forecasts:
+            return {}
+        
+        # Extract fantasy metrics
+        fantasy_key = f"FANTASY_PTS_{system_name.upper()}"
+        
+        if fantasy_key in all_forecasts:
+            forecast = all_forecasts[fantasy_key]
+        else:
+            # If direct fantasy forecast not available, calculate it
+            fantasy_forecast = self.calculate_fantasy_forecasts({
+                metric: all_forecasts[metric] 
+                for metric in all_forecasts
+                if metric in self.key_metrics
+            })
+            
+            if fantasy_key in fantasy_forecast:
+                forecast = fantasy_forecast[fantasy_key]
+            else:
+                return {}
+        
+        # Enhance the forecast with category breakdowns
+        category_contribution = {}
+        scoring = self.FANTASY_SCORING_SYSTEMS.get(system_name, {})
+        
+        for category, weight in scoring.items():
+            if category in ['DD', 'TD']:
+                continue  # Skip these special categories
+                
+            if category in all_forecasts:
+                value = all_forecasts[category]['forecast']
+                contribution = value * weight
+                category_contribution[category] = {
+                    'forecast': value,
+                    'weight': weight,
+                    'contribution': contribution,
+                    'percentage': 0.0  # Will calculate after totaling
+                }
+        
+        # Calculate percentage contributions
+        total_positive = sum(max(0, item['contribution']) for item in category_contribution.values())
+        total_negative = sum(min(0, item['contribution']) for item in category_contribution.values())
+        
+        for category in category_contribution:
+            contribution = category_contribution[category]['contribution']
+            if contribution > 0 and total_positive > 0:
+                category_contribution[category]['percentage'] = (contribution / total_positive) * 100
+            elif contribution < 0 and total_negative < 0:
+                category_contribution[category]['percentage'] = (contribution / abs(total_negative)) * 100
+        
+        # Return enhanced forecast
+        return {
+            'forecast': forecast,
+            'scoring_system': system_name,
+            'category_contribution': category_contribution
+        }
     
     def evaluate_model_performance(self, player_name: str, player_stats: pd.DataFrame, 
                                 metric: str, test_size: int = 5) -> Dict[str, float]:
@@ -609,6 +892,112 @@ class PlayerTimeSeriesAnalyzer:
             logger.error(f"Error evaluating model for {player_name} ({metric}): {str(e)}")
             return {}
     
+    def identify_fantasy_strengths(self, player_stats: pd.DataFrame) -> Dict[str, float]:
+        """
+        Identify a player's strengths in fantasy categories.
+        
+        Args:
+            player_stats: DataFrame with player statistics
+            
+        Returns:
+            Dictionary with z-scores for each fantasy category
+        """
+        if player_stats is None or player_stats.empty:
+            return {}
+        
+        # Define fantasy category averages (approximate league-wide)
+        league_averages = {
+            'PTS': 15.0,
+            'REB': 5.0,
+            'AST': 3.5,
+            'STL': 1.0,
+            'BLK': 0.8,
+            'TOV': 2.0,
+            '3PM': 1.5,
+            'FG_PCT': 0.47,
+            'FT_PCT': 0.78
+        }
+        
+        # Define standard deviations for each category
+        league_stdevs = {
+            'PTS': 7.0,
+            'REB': 3.0,
+            'AST': 2.5,
+            'STL': 0.5,
+            'BLK': 0.6,
+            'TOV': 1.0,
+            '3PM': 1.0,
+            'FG_PCT': 0.05,
+            'FT_PCT': 0.10
+        }
+        
+        # Calculate player's averages
+        player_avgs = {}
+        for cat in self.category_metrics:
+            if cat in player_stats.columns:
+                player_avgs[cat] = player_stats[cat].mean()
+        
+        # Calculate z-scores
+        z_scores = {}
+        for cat in player_avgs:
+            if cat in league_averages and cat in league_stdevs:
+                z_score = (player_avgs[cat] - league_averages[cat]) / league_stdevs[cat]
+                
+                # Invert for negative stats (TOV)
+                if cat == 'TOV':
+                    z_score = -z_score
+                
+                z_scores[cat] = z_score
+        
+        return z_scores
+    
+    def evaluate_fantasy_consistency(self, player_stats: pd.DataFrame, system_name: str = 'standard_points') -> Dict[str, float]:
+        """
+        Evaluate a player's consistency in fantasy production.
+        
+        Args:
+            player_stats: DataFrame with player statistics
+            system_name: Fantasy scoring system to use
+            
+        Returns:
+            Dictionary with consistency metrics
+        """
+        if player_stats is None or player_stats.empty:
+            return {}
+        
+        fantasy_col = f"FANTASY_PTS_{system_name.upper()}"
+        
+        if fantasy_col not in player_stats.columns:
+            return {}
+        
+        # Get fantasy points series
+        fantasy_pts = player_stats[fantasy_col]
+        
+        # Calculate statistics
+        mean = fantasy_pts.mean()
+        median = fantasy_pts.median()
+        std_dev = fantasy_pts.std()
+        
+        # Calculate coefficient of variation (lower = more consistent)
+        cv = std_dev / mean if mean > 0 else float('inf')
+        
+        # Calculate percentage of games within 20% of average
+        within_20pct = ((fantasy_pts >= 0.8 * mean) & (fantasy_pts <= 1.2 * mean)).mean() * 100
+        
+        # Calculate floor (10th percentile) and ceiling (90th percentile)
+        floor = fantasy_pts.quantile(0.1)
+        ceiling = fantasy_pts.quantile(0.9)
+        
+        return {
+            'mean': mean,
+            'median': median,
+            'std_dev': std_dev,
+            'coefficient_of_variation': cv,
+            'consistency_pct': within_20pct,
+            'floor': floor,
+            'ceiling': ceiling
+        }
+    
     def forecast_team_performance(self, team_name: str, team_players_stats: Dict[str, pd.DataFrame],
                                 opponent_team: str) -> Dict[str, Dict[str, Any]]:
         """
@@ -652,7 +1041,12 @@ class PlayerTimeSeriesAnalyzer:
             'TEAM_TS_PCT': [],
             'TEAM_PLUS_MINUS': 0,
             'TEAM_OFF_RATING': [],
-            'TEAM_DEF_RATING': []
+            'TEAM_DEF_RATING': [],
+            'TEAM_REBOUNDS': 0,
+            'TEAM_ASSISTS': 0,
+            'TEAM_STEALS': 0,
+            'TEAM_BLOCKS': 0,
+            'TEAM_THREES': 0
         }
         
         # Calculate team metrics based on individual player predictions
@@ -667,11 +1061,29 @@ class PlayerTimeSeriesAnalyzer:
                 else:
                     minutes = 20  # Default assumption
                 
-                # Estimate points based on PTS_PER_MIN * minutes
-                if 'PTS_PER_MIN' in forecast:
+                # Estimate points based on PTS_PER_MIN * minutes or direct PTS forecast
+                if 'PTS' in forecast:
+                    team_metrics['TEAM_POINTS'] += forecast['PTS']['forecast']
+                elif 'PTS_PER_MIN' in forecast:
                     pts_per_min = forecast['PTS_PER_MIN']['forecast']
                     player_points = pts_per_min * minutes
                     team_metrics['TEAM_POINTS'] += player_points
+                
+                # Add other stat projections if available
+                if 'REB' in forecast:
+                    team_metrics['TEAM_REBOUNDS'] += forecast['REB']['forecast']
+                
+                if 'AST' in forecast:
+                    team_metrics['TEAM_ASSISTS'] += forecast['AST']['forecast']
+                
+                if 'STL' in forecast:
+                    team_metrics['TEAM_STEALS'] += forecast['STL']['forecast']
+                
+                if 'BLK' in forecast:
+                    team_metrics['TEAM_BLOCKS'] += forecast['BLK']['forecast']
+                
+                if '3PM' in forecast:
+                    team_metrics['TEAM_THREES'] += forecast['3PM']['forecast']
                 
                 # Collect shooting percentages (weighted by minutes)
                 if 'FG_PCT' in forecast:
@@ -704,16 +1116,15 @@ class PlayerTimeSeriesAnalyzer:
                     'method': 'weighted_average'
                 }
         
-        # Simple sum for points and plus-minus
-        team_performance['TEAM_POINTS'] = {
-            'forecast': team_metrics['TEAM_POINTS'],
-            'method': 'sum'
-        }
+        # Add sum metrics
+        sum_metrics = ['TEAM_POINTS', 'TEAM_PLUS_MINUS', 'TEAM_REBOUNDS', 
+                        'TEAM_ASSISTS', 'TEAM_STEALS', 'TEAM_BLOCKS', 'TEAM_THREES']
         
-        team_performance['TEAM_PLUS_MINUS'] = {
-            'forecast': team_metrics['TEAM_PLUS_MINUS'],
-            'method': 'sum'
-        }
+        for metric in sum_metrics:
+            team_performance[metric] = {
+                'forecast': team_metrics[metric],
+                'method': 'sum'
+            }
         
         # Log team forecast
         logger.info(f"Team forecast for {team_name}: Points={team_performance['TEAM_POINTS']['forecast']:.1f}, "
@@ -805,7 +1216,19 @@ class PlayerTimeSeriesAnalyzer:
                 'predicted_winner': predicted_winner,
                 'win_probability': win_probability,
                 'home_forecast': home_forecast,
-                'away_forecast': away_forecast
+                'away_forecast': away_forecast,
+                
+                # Add fantasy-relevant metrics
+                'predicted_home_rebounds': home_forecast.get('TEAM_REBOUNDS', {}).get('forecast', 0),
+                'predicted_away_rebounds': away_forecast.get('TEAM_REBOUNDS', {}).get('forecast', 0),
+                'predicted_home_assists': home_forecast.get('TEAM_ASSISTS', {}).get('forecast', 0),
+                'predicted_away_assists': away_forecast.get('TEAM_ASSISTS', {}).get('forecast', 0),
+                'predicted_home_steals': home_forecast.get('TEAM_STEALS', {}).get('forecast', 0),
+                'predicted_away_steals': away_forecast.get('TEAM_STEALS', {}).get('forecast', 0),
+                'predicted_home_blocks': home_forecast.get('TEAM_BLOCKS', {}).get('forecast', 0),
+                'predicted_away_blocks': away_forecast.get('TEAM_BLOCKS', {}).get('forecast', 0),
+                'predicted_home_threes': home_forecast.get('TEAM_THREES', {}).get('forecast', 0),
+                'predicted_away_threes': away_forecast.get('TEAM_THREES', {}).get('forecast', 0)
             }
             
             logger.info(f"Game prediction: {away_team} {away_points:.1f} @ {home_team} {home_points:.1f}")
@@ -947,6 +1370,52 @@ class GamePredictor:
             return metrics
         
         return {}
+    
+    def predict_fantasy_friendly_matchups(self, player_name: str, player_stats: pd.DataFrame, 
+                                         upcoming_games: List[Dict[str, Any]],
+                                         scoring_system: str = 'standard_points') -> List[Dict[str, Any]]:
+        """
+        Predict which upcoming games will be most fantasy-friendly for a player.
+        
+        Args:
+            player_name: Name of the player
+            player_stats: DataFrame with player's historical statistics
+            upcoming_games: List of upcoming games with opponent information
+            scoring_system: Fantasy scoring system to use
+            
+        Returns:
+            List of upcoming games ranked by fantasy potential
+        """
+        logger.info(f"Predicting fantasy-friendly matchups for {player_name}")
+        
+        # Store fantasy predictions for each game
+        game_predictions = []
+        
+        # Analyze each upcoming game
+        for game in upcoming_games:
+            opponent = game.get('opponent')
+            game_date = game.get('date')
+            
+            # Get fantasy projection for this game
+            fantasy_forecast = self.time_series_analyzer.forecast_fantasy_performance(
+                player_name, player_stats, scoring_system, opponent)
+            
+            if fantasy_forecast and 'forecast' in fantasy_forecast:
+                # Add to predictions
+                game_predictions.append({
+                    'date': game_date,
+                    'opponent': opponent,
+                    'fantasy_pts': fantasy_forecast['forecast']['forecast'],
+                    'lower_bound': fantasy_forecast['forecast']['lower_bound'],
+                    'upper_bound': fantasy_forecast['forecast']['upper_bound'],
+                    'confidence': fantasy_forecast['forecast']['confidence'],
+                    'category_contribution': fantasy_forecast.get('category_contribution', {})
+                })
+        
+        # Sort by projected fantasy points (descending)
+        game_predictions.sort(key=lambda g: g['fantasy_pts'], reverse=True)
+        
+        return game_predictions
 
 
 # Example usage when run as script
@@ -969,4 +1438,18 @@ if __name__ == "__main__":
         
         # Print forecast results for key metrics
         for metric, result in forecast.items():
-            print(f"{metric}: {result['forecast']:.3f} [{result['lower_bound']:.3f}, {result['upper_bound']:.3f}]")
+            if metric in ['PTS', 'REB', 'AST', 'STL', 'BLK', 'FANTASY_PTS_STANDARD_POINTS']:
+                print(f"{metric}: {result['forecast']:.3f} [{result['lower_bound']:.3f}, {result['upper_bound']:.3f}]")
+        
+        # Get fantasy-specific forecast
+        fantasy_forecast = time_series_analyzer.forecast_fantasy_performance(
+            player_name, player_stats, 'standard_points')
+        
+        if fantasy_forecast and 'forecast' in fantasy_forecast:
+            print("\nFantasy Points Forecast:")
+            print(f"Projected: {fantasy_forecast['forecast']['forecast']:.2f}")
+            print(f"Range: {fantasy_forecast['forecast']['lower_bound']:.2f} - {fantasy_forecast['forecast']['upper_bound']:.2f}")
+            
+            print("\nCategory Contributions:")
+            for cat, data in fantasy_forecast.get('category_contribution', {}).items():
+                print(f"{cat}: {data['contribution']:.2f} points ({data['percentage']:.1f}% of total)")
