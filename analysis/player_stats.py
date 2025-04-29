@@ -4,7 +4,7 @@ import pandas as pd
 import time
 import random
 import re
-from typing import Dict, List, Any, Optional, Tuple, Union
+from typing import Dict, List, Any, Optional, Tuple
 from nba_api.stats.endpoints import playergamelog, playercareerstats, playerdashboardbygeneralsplits
 from nba_api.stats.static import players
 from fuzzywuzzy import process, fuzz
@@ -20,11 +20,10 @@ logger = logging.getLogger('analysis.player_stats')
 class PlayerStatsCollector:
     """
     Collects and processes historical player statistics using the NBA API.
-    Focused on retrieving time-series compatible metrics for ARIMA modeling,
-    with special emphasis on fantasy basketball relevant statistics.
+    Focused on retrieving time-series compatible metrics for ARIMA modeling.
     
     Uses official NBA API advanced metrics where possible, with supplementary
-    calculations for fantasy basketball scoring and category analysis.
+    calculations only when needed.
     
     Implements progressive delays and backoff strategy to handle rate limiting.
     """
@@ -46,60 +45,6 @@ class PlayerStatsCollector:
         'Kevin Porter': 'Kevin Porter Jr.',
         'Robert Williams': 'Robert Williams III',
         'Lonnie Walker': 'Lonnie Walker IV'
-    }
-
-    # Fantasy basketball scoring systems
-    FANTASY_SCORING_SYSTEMS = {
-        # Standard points league scoring
-        'standard_points': {
-            'PTS': 1.0,
-            'REB': 1.2,
-            'AST': 1.5,
-            'STL': 2.0,
-            'BLK': 2.0,
-            'TOV': -1.0,
-            '3PM': 0.5,
-            'DD': 2.0,  # Double-double
-            'TD': 5.0   # Triple-double
-        },
-        # ESPN default scoring
-        'espn_default': {
-            'PTS': 1.0,
-            'REB': 1.0,
-            'AST': 1.0,
-            'STL': 2.0,
-            'BLK': 2.0,
-            'TOV': -1.0,
-            '3PM': 1.0,
-            'DD': 0.0,
-            'TD': 0.0
-        },
-        # Yahoo default scoring
-        'yahoo_default': {
-            'PTS': 1.0,
-            'REB': 1.2,
-            'AST': 1.5,
-            'STL': 3.0,
-            'BLK': 3.0,
-            'TOV': -1.0,
-            '3PM': 0.5,
-            'DD': 0.0,
-            'TD': 0.0
-        }
-    }
-    
-    # Fantasy category league standard categories
-    CATEGORY_LEAGUE_CATS = [
-        'PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', '3PM', 'FG_PCT', 'FT_PCT'
-    ]
-    
-    # Position tiers for positional scarcity analysis
-    POSITION_TIERS = {
-        'PG': {'elite': 45, 'starter': 35, 'bench': 25},
-        'SG': {'elite': 42, 'starter': 32, 'bench': 22},
-        'SF': {'elite': 42, 'starter': 32, 'bench': 22},
-        'PF': {'elite': 40, 'starter': 30, 'bench': 20},
-        'C':  {'elite': 38, 'starter': 28, 'bench': 18}
     }
     
     def __init__(self):
@@ -671,14 +616,8 @@ class PlayerStatsCollector:
             # 1. Field Goal Percentage (FG_PCT)
             # Simple calculation is accurate, keep it even if official metrics are available
             df['FG_PCT'] = np.where(df['FGA'] > 0, df['FGM'] / df['FGA'], 0)
-
-            # 2. Free Throw Percentage (FT_PCT) - important for fantasy analysis
-            df['FT_PCT'] = np.where(df['FTA'] > 0, df['FTM'] / df['FTA'], 0)
             
-            # 3. Three-Point Percentage (3PT_PCT) - important for fantasy analysis
-            df['3PT_PCT'] = np.where(df['FG3A'] > 0, df['FG3M'] / df['FG3A'], 0)
-            
-            # 4. True Shooting Percentage (TS_PCT)
+            # 2. True Shooting Percentage (TS_PCT)
             # TS% = PTS / (2 * (FGA + 0.44 * FTA))
             df['TS_PCT'] = np.where(
                 (df['FGA'] + 0.44 * df['FTA']) > 0,
@@ -686,20 +625,12 @@ class PlayerStatsCollector:
                 0
             )
             
-            # 5. Points per Minute - simple calculation
+            # 3. Points per Minute - simple calculation
             df['PTS_PER_MIN'] = np.where(df['MINUTES_PLAYED'] > 0, df['PTS'] / df['MINUTES_PLAYED'], 0)
-
-            # 6. Stocks (STL + BLK) - popular fantasy metric
-            df['STOCKS'] = df['STL'] + df['BLK']
             
-            # 7. Defensive Stats Per Minute - for fantasy analysis
-            df['STL_PER_MIN'] = np.where(df['MINUTES_PLAYED'] > 0, df['STL'] / df['MINUTES_PLAYED'], 0)
-            df['BLK_PER_MIN'] = np.where(df['MINUTES_PLAYED'] > 0, df['BLK'] / df['MINUTES_PLAYED'], 0)
-            df['STOCKS_PER_MIN'] = np.where(df['MINUTES_PLAYED'] > 0, df['STOCKS'] / df['MINUTES_PLAYED'], 0)
+            # 4. Plus/Minus already in the data as PLUS_MINUS
             
-            # 8. Plus/Minus already in the data as PLUS_MINUS
-            
-            # 9. Possessions approximation - needed for some calculations
+            # 5. Possessions approximation - needed for some calculations
             df['POSS'] = df['FGA'] - df['OREB'] + df['TOV'] + 0.44 * df['FTA']
             
             # We now need to include official rates from player dashboard if available
@@ -804,7 +735,7 @@ class PlayerStatsCollector:
                 # Keep in realistic range (85-120)
                 df['DEF_RATING'] = df['DEF_RATING'].clip(85, 120)
             
-            # 10. Game Score (John Hollinger's formula) - always calculated locally
+            # 7. Game Score (John Hollinger's formula) - always calculated locally
             # GmSc = PTS + 0.4*FGM - 0.7*FGA - 0.4*(FTA-FTM) + 0.7*OREB + 0.3*DREB + STL + 0.7*AST + 0.7*BLK - 0.4*PF - TOV
             df['GAME_SCORE'] = (
                 df['PTS'] + 0.4 * df['FGM'] - 0.7 * df['FGA'] - 0.4 * (df['FTA'] - df['FTM']) 
@@ -812,47 +743,8 @@ class PlayerStatsCollector:
                 + 0.7 * df['BLK'] - 0.4 * df['PF'] - df['TOV']
             )
             
-            # 11. Assist-to-Turnover Ratio - simple calculation
+            # 8. Assist-to-Turnover Ratio - simple calculation
             df['AST_TO_RATIO'] = np.where(df['TOV'] > 0, df['AST'] / df['TOV'], df['AST'])
-
-            # 12. Add column for 3PM for fantasy points calculation
-            df['3PM'] = df['FG3M']
-
-            # 13. Check for double-doubles and triple-doubles (important for fantasy points)
-            stat_categories = ['PTS', 'REB', 'AST', 'STL', 'BLK']
-            
-            # Double-doubles: Check if player has 10+ in at least 2 categories
-            df['DD'] = df[stat_categories].apply(lambda row: sum(row >= 10) >= 2, axis=1).astype(int)
-            
-            # Triple-doubles: Check if player has 10+ in at least 3 categories
-            df['TD'] = df[stat_categories].apply(lambda row: sum(row >= 10) >= 3, axis=1).astype(int)
-            
-            # 14. Calculate fantasy points for common scoring systems
-            for system_name, scoring in self.FANTASY_SCORING_SYSTEMS.items():
-                # Calculate fantasy points for this scoring system
-                fantasy_points = (
-                    df['PTS'] * scoring['PTS'] +
-                    df['REB'] * scoring['REB'] +
-                    df['AST'] * scoring['AST'] +
-                    df['STL'] * scoring['STL'] +
-                    df['BLK'] * scoring['BLK'] +
-                    df['TOV'] * scoring['TOV'] +
-                    df['3PM'] * scoring['3PM'] +
-                    df['DD'] * scoring['DD'] +
-                    df['TD'] * scoring['TD']
-                )
-                
-                # Add to dataframe
-                df[f'FANTASY_PTS_{system_name.upper()}'] = fantasy_points
-            
-            # 15. Calculate fantasy points per minute
-            for system_name in self.FANTASY_SCORING_SYSTEMS.keys():
-                col_name = f'FANTASY_PTS_{system_name.upper()}'
-                df[f'{col_name}_PER_MIN'] = np.where(
-                    df['MINUTES_PLAYED'] > 0,
-                    df[col_name] / df['MINUTES_PLAYED'],
-                    0
-                )
             
             return df
             
@@ -893,25 +785,12 @@ class PlayerStatsCollector:
         
         # Select only the metrics we need for time series analysis
         if player_stats is not None:
-            # Define columns to keep for time series analysis - enhanced for fantasy relevance
+            # Define columns to keep for time series analysis
             ts_columns = [
                 'GAME_DATE', 'GAME_ID',  # Identifiers
-                'MIN', 'MINUTES_PLAYED',  # Minutes are crucial for fantasy
-                'PTS', 'PTS_PER_MIN',  # Points
-                'REB', 'OREB', 'DREB',  # Rebounding stats
-                'AST',  # Assists
-                'STL', 'BLK', 'STOCKS', 'STL_PER_MIN', 'BLK_PER_MIN', 'STOCKS_PER_MIN',  # Defensive stats
-                'TOV',  # Turnovers
-                'FGM', 'FGA', 'FG_PCT',  # Field goal stats
-                'FTM', 'FTA', 'FT_PCT',  # Free throw stats
-                '3PM', '3PT_PCT',  # Three-point stats
-                'PLUS_MINUS',  # Impact metrics
-                'GAME_SCORE', 'OFF_RATING', 'DEF_RATING',
-                'USG_RATE', 'AST_TO_RATIO',  # Usage metrics
-                'DD', 'TD',  # Double-double and triple-double indicators
-                'FANTASY_PTS_STANDARD_POINTS', 'FANTASY_PTS_STANDARD_POINTS_PER_MIN',  # Fantasy points
-                'FANTASY_PTS_ESPN_DEFAULT', 'FANTASY_PTS_ESPN_DEFAULT_PER_MIN',  # ESPN scoring
-                'FANTASY_PTS_YAHOO_DEFAULT', 'FANTASY_PTS_YAHOO_DEFAULT_PER_MIN'  # Yahoo scoring
+                'FG_PCT', 'TS_PCT', 'PTS_PER_MIN',  # Efficiency metrics
+                'PLUS_MINUS', 'OFF_RATING', 'DEF_RATING', 'GAME_SCORE',  # Impact metrics
+                'USG_RATE', 'MINUTES_PLAYED', 'AST_TO_RATIO'  # Usage metrics
             ]
             
             # Keep only columns that exist in the dataframe
@@ -961,254 +840,6 @@ class PlayerStatsCollector:
         
         logger.info(f"Retrieved stats for {len(team_stats)} players from {team_name}")
         return team_stats
-    
-    def calculate_fantasy_category_strengths(self, player_stats: pd.DataFrame) -> Dict[str, float]:
-        """
-        Calculate a player's strengths in standard fantasy categories.
-        
-        Args:
-            player_stats: DataFrame with player's historical statistics
-            
-        Returns:
-            Dictionary mapping categories to z-scores relative to average players
-        """
-        if player_stats is None or player_stats.empty:
-            return {}
-        
-        # Define category league standard values (approximately league averages)
-        # These could be updated with actual league averages for more accuracy
-        league_averages = {
-            'PTS': 15.0,
-            'REB': 5.0,
-            'AST': 3.5,
-            'STL': 1.0,
-            'BLK': 0.8,
-            'TOV': 2.0,
-            '3PM': 1.5,
-            'FG_PCT': 0.47,
-            'FT_PCT': 0.78
-        }
-        
-        # Define standard deviations for each category
-        league_stdevs = {
-            'PTS': 7.0,
-            'REB': 3.0,
-            'AST': 2.5,
-            'STL': 0.5,
-            'BLK': 0.6,
-            'TOV': 1.0,
-            '3PM': 1.0,
-            'FG_PCT': 0.05,
-            'FT_PCT': 0.10
-        }
-        
-        # Calculate player's averages for each category
-        player_averages = {}
-        for cat in self.CATEGORY_LEAGUE_CATS:
-            if cat in player_stats.columns:
-                player_averages[cat] = player_stats[cat].mean()
-        
-        # Calculate z-scores for each category
-        category_strengths = {}
-        for cat in player_averages:
-            if cat in league_averages and cat in league_stdevs:
-                z_score = (player_averages[cat] - league_averages[cat]) / league_stdevs[cat]
-                
-                # Invert for negative categories (TO)
-                if cat == 'TOV':
-                    z_score = -z_score
-                
-                category_strengths[cat] = z_score
-        
-        return category_strengths
-    
-    def evaluate_positional_scarcity(self, player_stats: pd.DataFrame, position: str) -> Dict[str, Any]:
-        """
-        Evaluate a player's value considering positional scarcity.
-        
-        Args:
-            player_stats: DataFrame with player's historical statistics
-            position: Player's position (PG, SG, SF, PF, C)
-            
-        Returns:
-            Dictionary with positional value assessment
-        """
-        if player_stats is None or player_stats.empty or position not in self.POSITION_TIERS:
-            return {}
-        
-        # Use standard points as baseline for assessment
-        if 'FANTASY_PTS_STANDARD_POINTS' not in player_stats.columns:
-            return {}
-        
-        avg_fantasy_pts = player_stats['FANTASY_PTS_STANDARD_POINTS'].mean()
-        position_tiers = self.POSITION_TIERS[position]
-        
-        # Determine tier
-        if avg_fantasy_pts >= position_tiers['elite']:
-            tier = 'Elite'
-            percentile = 95
-        elif avg_fantasy_pts >= position_tiers['starter']:
-            tier = 'Starter'
-            percentile = 75
-        elif avg_fantasy_pts >= position_tiers['bench']:
-            tier = 'Rotation'
-            percentile = 50
-        else:
-            tier = 'Bench'
-            percentile = 25
-        
-        # Calculate relative value (how far above replacement level)
-        replacement_level = position_tiers['bench'] * 0.9  # 90% of bench tier
-        value_above_replacement = avg_fantasy_pts - replacement_level
-        
-        return {
-            'tier': tier,
-            'percentile': percentile,
-            'avg_fantasy_pts': avg_fantasy_pts,
-            'replacement_level': replacement_level,
-            'value_above_replacement': value_above_replacement
-        }
-    
-    def analyze_matchup_advantage(self, player_stats: pd.DataFrame, opponent_team: str) -> Dict[str, float]:
-        """
-        Analyze if a player has advantageous matchups against specific teams.
-        
-        Args:
-            player_stats: DataFrame with player's historical statistics
-            opponent_team: Opponent team name
-            
-        Returns:
-            Dictionary with matchup advantage scores by category
-        """
-        # This would require team data that's not yet implemented
-        # Placeholder for future enhancement
-        
-        # Return neutral matchup for now
-        return {cat: 0.0 for cat in self.CATEGORY_LEAGUE_CATS}
-    
-    def calculate_fantasy_consistency(self, player_stats: pd.DataFrame, scoring_system: str = 'standard_points') -> Dict[str, float]:
-        """
-        Calculate a player's consistency in fantasy performance.
-        
-        Args:
-            player_stats: DataFrame with player's historical statistics
-            scoring_system: Which scoring system to use for calculation
-            
-        Returns:
-            Dictionary with consistency metrics
-        """
-        if player_stats is None or player_stats.empty:
-            return {}
-        
-        # Get column name for the scoring system
-        col_name = f'FANTASY_PTS_{scoring_system.upper()}'
-        
-        if col_name not in player_stats.columns:
-            return {}
-        
-        # Calculate consistency metrics
-        fantasy_pts = player_stats[col_name]
-        mean_pts = fantasy_pts.mean()
-        median_pts = fantasy_pts.median()
-        std_dev = fantasy_pts.std()
-        
-        # Calculate coefficient of variation (lower is more consistent)
-        cv = std_dev / mean_pts if mean_pts > 0 else float('inf')
-        
-        # Calculate percentage of games within 20% of average
-        within_20pct = ((fantasy_pts >= 0.8 * mean_pts) & (fantasy_pts <= 1.2 * mean_pts)).mean() * 100
-        
-        # Calculate floor (10th percentile) and ceiling (90th percentile)
-        floor = fantasy_pts.quantile(0.1)
-        ceiling = fantasy_pts.quantile(0.9)
-        
-        return {
-            'mean': mean_pts,
-            'median': median_pts,
-            'std_dev': std_dev,
-            'coef_var': cv,
-            'consistency_pct': within_20pct,
-            'floor': floor,
-            'ceiling': ceiling
-        }
-    
-    def get_player_fantasy_profile(self, player_name: str, position: str = None, num_games: int = 30) -> Dict[str, Any]:
-        """
-        Get comprehensive fantasy basketball profile for a player.
-        
-        Args:
-            player_name: Player's full name
-            position: Player's position (optional)
-            num_games: Number of recent games to analyze
-            
-        Returns:
-            Dictionary with complete fantasy profile and analysis
-        """
-        # Get player stats
-        player_stats = self.get_player_stats(player_name, num_games)
-        
-        if player_stats is None or player_stats.empty:
-            return {'error': f"No stats available for {player_name}"}
-        
-        # Build fantasy profile
-        fantasy_profile = {'player_name': player_name}
-        
-        # 1. Basic stats
-        fantasy_profile['basic_stats'] = {
-            'games_played': len(player_stats),
-            'minutes': player_stats['MINUTES_PLAYED'].mean(),
-            'points': player_stats['PTS'].mean(),
-            'rebounds': player_stats['REB'].mean(),
-            'assists': player_stats['AST'].mean(),
-            'steals': player_stats['STL'].mean(),
-            'blocks': player_stats['BLK'].mean(),
-            'threes': player_stats['3PM'].mean(),
-            'fg_pct': player_stats['FG_PCT'].mean(),
-            'ft_pct': player_stats['FT_PCT'].mean() if 'FT_PCT' in player_stats.columns else None,
-            'turnovers': player_stats['TOV'].mean(),
-            'stocks': player_stats['STOCKS'].mean() if 'STOCKS' in player_stats.columns else None,
-            'double_doubles': player_stats['DD'].sum(),
-            'triple_doubles': player_stats['TD'].sum()
-        }
-        
-        # 2. Fantasy points by scoring system
-        fantasy_profile['fantasy_points'] = {}
-        for system_name in self.FANTASY_SCORING_SYSTEMS.keys():
-            col_name = f'FANTASY_PTS_{system_name.upper()}'
-            if col_name in player_stats.columns:
-                fantasy_profile['fantasy_points'][system_name] = player_stats[col_name].mean()
-        
-        # 3. Category strengths analysis
-        fantasy_profile['category_strengths'] = self.calculate_fantasy_category_strengths(player_stats)
-        
-        # 4. Consistency analysis
-        fantasy_profile['consistency'] = {}
-        for system_name in self.FANTASY_SCORING_SYSTEMS.keys():
-            fantasy_profile['consistency'][system_name] = self.calculate_fantasy_consistency(player_stats, system_name)
-        
-        # 5. Positional scarcity analysis (if position provided)
-        if position and position in self.POSITION_TIERS:
-            fantasy_profile['positional_value'] = self.evaluate_positional_scarcity(player_stats, position)
-        
-        # 6. Overall fantasy tier
-        # Determine tier based on fantasy points and category strengths
-        if 'standard_points' in fantasy_profile['fantasy_points']:
-            standard_pts = fantasy_profile['fantasy_points']['standard_points']
-            
-            if standard_pts >= 45:
-                tier = "Elite"
-            elif standard_pts >= 35:
-                tier = "Star"
-            elif standard_pts >= 25:
-                tier = "Starter"
-            elif standard_pts >= 15:
-                tier = "Rotation"
-            else:
-                tier = "Bench"
-                
-            fantasy_profile['fantasy_tier'] = tier
-        
-        return fantasy_profile
 
 
 # Example usage when run as script
@@ -1222,16 +853,7 @@ if __name__ == "__main__":
     
     if stats is not None:
         print(f"\nStats for {player_name}:")
-        print(stats[['GAME_DATE', 'FG_PCT', 'PTS_PER_MIN', 'PLUS_MINUS', 'GAME_SCORE', 'STL', 'BLK', 'FANTASY_PTS_STANDARD_POINTS']].head())
-    
-    # Get fantasy profile
-    fantasy_profile = collector.get_player_fantasy_profile(player_name, position="SF", num_games=10)
-    print("\nFantasy Profile:")
-    print(f"Fantasy Tier: {fantasy_profile.get('fantasy_tier', 'Unknown')}")
-    print(f"Fantasy Points (Standard): {fantasy_profile.get('fantasy_points', {}).get('standard_points', 0):.1f}")
-    print("Category Strengths:")
-    for cat, z_score in fantasy_profile.get('category_strengths', {}).items():
-        print(f"  {cat}: {z_score:.2f}")
+        print(stats[['GAME_DATE', 'FG_PCT', 'PTS_PER_MIN', 'PLUS_MINUS', 'GAME_SCORE']].head())
     
     # Test with problematic names
     test_names = [
