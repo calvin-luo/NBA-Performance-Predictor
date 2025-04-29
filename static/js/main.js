@@ -49,9 +49,6 @@ $(document).ready(function() {
     // Initialize player search autocomplete
     initPlayerSearchAutocomplete();
     
-    // Initialize date pickers
-    initDatePickers();
-    
     // Add animated effects
     initAnimations();
     
@@ -130,20 +127,6 @@ function initPlayerSearchAutocomplete() {
 }
 
 /**
- * Initialize date pickers across the app
- */
-function initDatePickers() {
-    // Initialize any date pickers
-    if (typeof $.fn.datepicker !== 'undefined' && $('.datepicker').length > 0) {
-        $('.datepicker').datepicker({
-            format: 'yyyy-mm-dd',
-            autoclose: true,
-            todayHighlight: true
-        });
-    }
-}
-
-/**
  * Initialize scroll and fade animations
  */
 function initAnimations() {
@@ -215,28 +198,6 @@ function formatDate(dateString) {
 }
 
 /**
- * Get a date string offset from today
- * @param {number} dayOffset - Number of days to offset from today
- * @returns {string} Date string in format YYYY-MM-DD
- */
-function getDateString(dayOffset) {
-    const date = new Date();
-    date.setDate(date.getDate() + dayOffset);
-    return date.toISOString().split('T')[0];
-}
-
-/**
- * Get team logo URL
- * @param {string} teamName - Full team name
- * @returns {string} URL to team logo
- */
-function getTeamLogoUrl(teamName) {
-    // Remove spaces and convert to lowercase
-    const formattedName = teamName.replace(/\s+/g, '').toLowerCase();
-    return `/static/img/teams/${formattedName}.png`;
-}
-
-/**
  * Show a message alert
  * @param {string} message - Message to display
  * @param {string} type - Alert type (success, danger, warning, info)
@@ -296,13 +257,12 @@ function fetchPlayerStats(playerName, forceRefresh = false) {
 /**
  * Fetch player predictions from API
  * @param {string} playerName - Name of player
- * @param {string} opponent - Optional opponent team name
  * @returns {Promise} Promise resolving to player predictions
  */
-function fetchPlayerPredictions(playerName, opponent = '') {
+function fetchPlayerPredictions(playerName) {
     return new Promise((resolve, reject) => {
         // Build the API endpoint
-        const endpoint = `/api/player_prediction/${encodeURIComponent(playerName)}${opponent ? '?opponent=' + encodeURIComponent(opponent) : ''}`;
+        const endpoint = `/api/player_prediction/${encodeURIComponent(playerName)}`;
         
         // Make the request
         $.ajax({
@@ -321,46 +281,18 @@ function fetchPlayerPredictions(playerName, opponent = '') {
 }
 
 /**
- * Fetch players comparison from API
- * @param {Array} playerNames - Array of player names to compare
- * @returns {Promise} Promise resolving to comparison data
- */
-function fetchPlayersComparison(playerNames) {
-    return new Promise((resolve, reject) => {
-        // Build the API endpoint
-        const endpoint = `/api/compare_players?players=${playerNames.join(',')}`;
-        
-        // Make the request
-        $.ajax({
-            url: endpoint,
-            method: 'GET',
-            dataType: 'json',
-            success: function(data) {
-                resolve(data);
-            },
-            error: function(xhr, status, error) {
-                console.error('Error fetching players comparison:', error);
-                reject(error);
-            }
-        });
-    });
-}
-
-/**
  * Submit a lineup for prediction
  * @param {Array} playerNames - Array of player names in lineup
- * @param {string} opponent - Optional opponent team name
  * @returns {Promise} Promise resolving to lineup prediction
  */
-function submitLineupPrediction(playerNames, opponent = '') {
+function submitLineupPrediction(playerNames) {
     return new Promise((resolve, reject) => {
         // Build the API endpoint
-        const endpoint = '/api/lineup_prediction';
+        const endpoint = '/api/lineup_projection';
         
         // Prepare data
         const data = {
-            players: playerNames,
-            opponent: opponent || null
+            players: playerNames
         };
         
         // Make the request
@@ -410,7 +342,7 @@ function loadTodayGames() {
     // Show loading state
     $('#today-games').html(`
         <tr>
-            <td colspan="5" class="text-center py-3">
+            <td colspan="4" class="text-center py-3">
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
@@ -429,32 +361,13 @@ function loadTodayGames() {
             if (data.games && data.games.length > 0) {
                 // Process each game
                 data.games.forEach(function(game) {
-                    // Create team logos with error handling
-                    const homeTeamLogo = `<img src="/static/img/teams/${game.home_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.home_team}" onerror="this.onerror=null; this.src='/static/img/placeholder-team.png';">`;
-                    const awayTeamLogo = `<img src="/static/img/teams/${game.away_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.away_team}" onerror="this.onerror=null; this.src='/static/img/placeholder-team.png';">`;
-                    
-                    // Format team records (if available)
-                    const homeRecord = game.home_record || 'N/A';
-                    const awayRecord = game.away_record || 'N/A';
-                    
                     // Add row for this game
                     gamesHtml += `
                         <tr>
                             <td>${game.game_time || 'TBD'}</td>
-                            <td>
-                                <div class="d-flex align-items-center">
-                                    ${awayTeamLogo}
-                                    <span class="ms-2">${game.away_team}</span>
-                                </div>
-                            </td>
-                            <td>
-                                <div class="d-flex align-items-center">
-                                    ${homeTeamLogo}
-                                    <span class="ms-2">${game.home_team}</span>
-                                </div>
-                            </td>
+                            <td>${game.away_team}</td>
+                            <td>${game.home_team}</td>
                             <td>${game.venue || 'TBD'}</td>
-                            <td>${awayRecord} / ${homeRecord}</td>
                         </tr>
                     `;
                 });
@@ -465,10 +378,10 @@ function loadTodayGames() {
                 // No games found
                 gamesHtml = `
                     <tr>
-                        <td colspan="5" class="text-center py-3">
+                        <td colspan="4" class="text-center py-3">
                             <i class="fas fa-basketball-ball fa-3x text-muted mb-3"></i>
                             <h5>No games scheduled for today</h5>
-                            <p class="text-muted">Check back later or view the full schedule.</p>
+                            <p class="text-muted">Check back later.</p>
                         </td>
                     </tr>
                 `;
@@ -484,7 +397,7 @@ function loadTodayGames() {
             // Show error
             $('#today-games').html(`
                 <tr>
-                    <td colspan="5" class="text-center py-3">
+                    <td colspan="4" class="text-center py-3">
                         <div class="text-danger">
                             <i class="fas fa-exclamation-circle fa-3x mb-3"></i>
                             <h5>Error loading games</h5>
@@ -530,10 +443,7 @@ function createRadarChart(canvasId, labels, datasets) {
                     suggestedMin: 0,
                     suggestedMax: 100,
                     ticks: {
-                        stepSize: 20,
-                        callback: function(value) {
-                            return value + '%';
-                        }
+                        stepSize: 20
                     }
                 }
             }
@@ -627,52 +537,6 @@ function createBarChart(canvasId, labels, datasets, title = '') {
     return window[canvasId + 'Chart'];
 }
 
-/**
- * Create a doughnut chart
- * @param {string} canvasId - ID of canvas element
- * @param {Array} labels - Array of labels for segments
- * @param {Array} data - Array of data values
- * @param {Array} colors - Array of colors for segments
- * @param {string} title - Chart title
- * @returns {Chart} Chart instance
- */
-function createDoughnutChart(canvasId, labels, data, colors, title = '') {
-    const ctx = document.getElementById(canvasId).getContext('2d');
-    
-    // Destroy existing chart if it exists
-    if (window[canvasId + 'Chart']) {
-        window[canvasId + 'Chart'].destroy();
-    }
-    
-    // Create new chart
-    window[canvasId + 'Chart'] = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: data,
-                backgroundColor: colors,
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                title: {
-                    display: !!title,
-                    text: title
-                },
-                legend: {
-                    position: 'bottom'
-                }
-            },
-            cutout: '50%'
-        }
-    });
-    
-    return window[canvasId + 'Chart'];
-}
-
 // ======= Player Utility Functions =======
 
 /**
@@ -732,73 +596,4 @@ function formatMetricValue(value, metric) {
         // Default formatting
         return value.toFixed(1);
     }
-}
-
-// ======= Team Utility Functions =======
-
-/**
- * Get NBA team abbreviation from full name
- * @param {string} teamName - Full team name
- * @returns {string} Team abbreviation
- */
-function getTeamAbbreviation(teamName) {
-    const teamAbbreviations = {
-        "Atlanta Hawks": "ATL",
-        "Boston Celtics": "BOS",
-        "Brooklyn Nets": "BKN",
-        "Charlotte Hornets": "CHA",
-        "Chicago Bulls": "CHI",
-        "Cleveland Cavaliers": "CLE",
-        "Dallas Mavericks": "DAL",
-        "Denver Nuggets": "DEN",
-        "Detroit Pistons": "DET",
-        "Golden State Warriors": "GSW",
-        "Houston Rockets": "HOU",
-        "Indiana Pacers": "IND",
-        "Los Angeles Clippers": "LAC",
-        "Los Angeles Lakers": "LAL",
-        "Memphis Grizzlies": "MEM",
-        "Miami Heat": "MIA",
-        "Milwaukee Bucks": "MIL",
-        "Minnesota Timberwolves": "MIN",
-        "New Orleans Pelicans": "NOP",
-        "New York Knicks": "NYK",
-        "Oklahoma City Thunder": "OKC",
-        "Orlando Magic": "ORL",
-        "Philadelphia 76ers": "PHI",
-        "Phoenix Suns": "PHX",
-        "Portland Trail Blazers": "POR",
-        "Sacramento Kings": "SAC",
-        "San Antonio Spurs": "SAS",
-        "Toronto Raptors": "TOR",
-        "Utah Jazz": "UTA",
-        "Washington Wizards": "WAS"
-    };
-    
-    return teamAbbreviations[teamName] || '';
-}
-
-/**
- * Populate a team dropdown select
- * @param {string} selectId - ID of select element
- * @param {string} initialValue - Initial value to select
- */
-function populateTeamDropdown(selectId, initialValue = '') {
-    // Get the select element
-    const $select = $('#' + selectId);
-    
-    // Check if it exists
-    if ($select.length === 0) return;
-    
-    // Empty options list
-    let options = '<option value="">Select Team</option>';
-    
-    // Add all teams
-    NBA_TEAMS.forEach(team => {
-        const selected = initialValue === team ? 'selected' : '';
-        options += `<option value="${team}" ${selected}>${team}</option>`;
-    });
-    
-    // Update select options
-    $select.html(options);
 }

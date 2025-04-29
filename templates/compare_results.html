@@ -18,10 +18,8 @@
 <!-- Player Comparison Header -->
 <div class="row mb-5">
     <div class="col-md-5 text-center">
-        <div class="player-image-container mb-3">
-            <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 150px; height: 150px; margin: 0 auto;">
-                <i class="fas fa-user fa-4x text-secondary"></i>
-            </div>
+        <div class="mb-3">
+            <i class="fas fa-user-circle fa-5x text-primary"></i>
         </div>
         <h2 class="player-name">{{ player1 }}</h2>
         <p class="text-muted" id="player1-team-position">NBA Player</p>
@@ -34,10 +32,8 @@
     </div>
     
     <div class="col-md-5 text-center">
-        <div class="player-image-container mb-3">
-            <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 150px; height: 150px; margin: 0 auto;">
-                <i class="fas fa-user fa-4x text-secondary"></i>
-            </div>
+        <div class="mb-3">
+            <i class="fas fa-user-circle fa-5x text-secondary"></i>
         </div>
         <h2 class="player-name">{{ player2 }}</h2>
         <p class="text-muted" id="player2-team-position">NBA Player</p>
@@ -178,13 +174,6 @@
                         </tbody>
                     </table>
                 </div>
-                
-                <div class="row mt-4">
-                    <div class="col-md-12">
-                        <h5>Prediction Confidence</h5>
-                        <canvas id="confidenceChart" width="800" height="300"></canvas>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -243,7 +232,6 @@
     let scoringChart;
     let efficiencyChart;
     let impactChart;
-    let confidenceChart;
     let recentGamesChart;
     
     $(document).ready(function() {
@@ -303,9 +291,6 @@
                 
                 // Update the prediction table
                 updatePredictionTable();
-                
-                // Create confidence chart
-                createConfidenceChart();
             }).fail(function() {
                 alert(`Error loading prediction for {{ player2 }}. Please try again.`);
             });
@@ -737,115 +722,6 @@
         }
         
         $('#prediction-table').html(tableHtml);
-    }
-    
-    // Create confidence chart
-    function createConfidenceChart() {
-        if (!player1Prediction || !player2Prediction) {
-            return;
-        }
-        
-        const ctx = document.getElementById('confidenceChart').getContext('2d');
-        
-        // Define metrics to display
-        const metrics = [
-            { key: 'PTS_PER_MIN', label: 'Points', multiplier: 36 },
-            { key: 'GAME_SCORE', label: 'Game Score', multiplier: 1 }
-        ];
-        
-        const datasets = [];
-        
-        // Add data for each player
-        metrics.forEach((metric, index) => {
-            if (player1Prediction[metric.key] && player2Prediction[metric.key]) {
-                // Player 1 data
-                const player1Val = player1Prediction[metric.key].forecast * metric.multiplier;
-                const player1Lower = player1Prediction[metric.key].lower_bound * metric.multiplier;
-                const player1Upper = player1Prediction[metric.key].upper_bound * metric.multiplier;
-                
-                // Player 2 data
-                const player2Val = player2Prediction[metric.key].forecast * metric.multiplier;
-                const player2Lower = player2Prediction[metric.key].lower_bound * metric.multiplier;
-                const player2Upper = player2Prediction[metric.key].upper_bound * metric.multiplier;
-                
-                datasets.push({
-                    label: `{{ player1 }} - ${metric.label}`,
-                    data: [{
-                        x: index * 2,
-                        y: player1Val,
-                        yMin: player1Lower,
-                        yMax: player1Upper
-                    }],
-                    backgroundColor: 'rgba(54, 162, 235, 0.7)'
-                });
-                
-                datasets.push({
-                    label: `{{ player2 }} - ${metric.label}`,
-                    data: [{
-                        x: index * 2 + 1,
-                        y: player2Val,
-                        yMin: player2Lower,
-                        yMax: player2Upper
-                    }],
-                    backgroundColor: 'rgba(255, 99, 132, 0.7)'
-                });
-            }
-        });
-        
-        if (confidenceChart) {
-            confidenceChart.destroy();
-        }
-        
-        confidenceChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Prediction Confidence Intervals'
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const dataPoint = context.raw;
-                                return [
-                                    `Forecast: ${dataPoint.y.toFixed(1)}`,
-                                    `Range: ${dataPoint.yMin.toFixed(1)} - ${dataPoint.yMax.toFixed(1)}`
-                                ];
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        type: 'linear',
-                        offset: true,
-                        grid: {
-                            offset: true
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                // Custom labels for x-axis
-                                const metricIndex = Math.floor(value / 2);
-                                const player = value % 2 === 0 ? '{{ player1 }}' : '{{ player2 }}';
-                                
-                                if (metricIndex < metrics.length) {
-                                    return `${player} ${metrics[metricIndex].label}`;
-                                }
-                                return '';
-                            }
-                        }
-                    },
-                    y: {
-                        beginAtZero: false
-                    }
-                }
-            }
-        });
     }
     
     // Create recent games chart

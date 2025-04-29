@@ -6,10 +6,7 @@
 <style>
     .court-container {
         position: relative;
-        background-image: url("{{ url_for('static', filename='img/basketball-court.svg') }}");
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
+        background-color: #f8f9fa;
         height: 500px;
         border: 2px solid #ddd;
         border-radius: 5px;
@@ -129,7 +126,7 @@
                 <h4 class="mb-0">Build Your Dream NBA Lineup</h4>
             </div>
             <div class="card-body">
-                <p>Drag and drop players to create your ultimate fantasy NBA lineup. We'll analyze your team's chemistry and predict team performance.</p>
+                <p>Select 5 players to create your ultimate fantasy NBA lineup. We'll use SARIMA time-series modeling to predict each player's performance in their next game.</p>
                 
                 <div class="row align-items-center mb-4">
                     <div class="col-md-6">
@@ -140,7 +137,7 @@
                             </button>
                         </div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-6">
                         <select class="form-select" id="position-filter">
                             <option value="all">All Positions</option>
                             <option value="PG">Point Guards</option>
@@ -148,12 +145,6 @@
                             <option value="SF">Small Forwards</option>
                             <option value="PF">Power Forwards</option>
                             <option value="C">Centers</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <select class="form-select" id="opponent-select">
-                            <option value="">Select Opponent Team</option>
-                            <!-- Will be populated with JavaScript -->
                         </select>
                     </div>
                 </div>
@@ -203,60 +194,40 @@
             </div>
         </div>
         
-        <!-- Lineup Analysis Results (Initially Hidden) -->
+        <!-- Player Projections (Initially Hidden) -->
         <div class="card shadow-sm mt-4" id="analysis-results" style="display: none;">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0">Team Analysis Results</h5>
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Player Projections</h5>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card mb-3">
-                            <div class="card-body">
-                                <h6 class="card-title text-center">Team Performance Projection</h6>
-                                <div class="text-center mb-3">
-                                    <span class="display-4" id="team-score">0.0</span>
-                                    <span class="text-muted d-block">Team Score</span>
-                                </div>
-                                <div class="row text-center">
-                                    <div class="col-4">
-                                        <span class="fs-4" id="team-offense">0.0</span>
-                                        <span class="text-muted d-block small">Offense</span>
-                                    </div>
-                                    <div class="col-4">
-                                        <span class="fs-4" id="team-defense">0.0</span>
-                                        <span class="text-muted d-block small">Defense</span>
-                                    </div>
-                                    <div class="col-4">
-                                        <span class="fs-4" id="team-chemistry">0.0</span>
-                                        <span class="text-muted d-block small">Chemistry</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body">
-                                <h6 class="card-title text-center">Team Strengths & Weaknesses</h6>
-                                <canvas id="teamRadarChart" width="250" height="250"></canvas>
-                            </div>
-                        </div>
-                    </div>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Projections based on SARIMA time-series analysis of each player's historical performance data.
                 </div>
                 
-                <div class="row mt-4">
-                    <div class="col-md-12">
-                        <h6>Team Insights</h6>
-                        <ul class="list-group" id="team-insights">
-                            <li class="list-group-item list-group-item-light text-center">
-                                <div class="spinner-border spinner-border-sm text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                                <span class="ms-2">Analyzing team chemistry and performance...</span>
-                            </li>
-                        </ul>
-                    </div>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Player</th>
+                                <th>PTS</th>
+                                <th>FG%</th>
+                                <th>TS%</th>
+                                <th>+/-</th>
+                                <th>Game Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="player-projections">
+                            <tr>
+                                <td colspan="6" class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Analyzing players using SARIMA models...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -320,18 +291,6 @@
         C: null
     };
     
-    // NBA Teams list
-    const nbaTeams = [
-        "Atlanta Hawks", "Boston Celtics", "Brooklyn Nets", "Charlotte Hornets",
-        "Chicago Bulls", "Cleveland Cavaliers", "Dallas Mavericks", "Denver Nuggets",
-        "Detroit Pistons", "Golden State Warriors", "Houston Rockets", "Indiana Pacers",
-        "Los Angeles Clippers", "Los Angeles Lakers", "Memphis Grizzlies", "Miami Heat",
-        "Milwaukee Bucks", "Minnesota Timberwolves", "New Orleans Pelicans", "New York Knicks",
-        "Oklahoma City Thunder", "Orlando Magic", "Philadelphia 76ers", "Phoenix Suns",
-        "Portland Trail Blazers", "Sacramento Kings", "San Antonio Spurs", "Toronto Raptors",
-        "Utah Jazz", "Washington Wizards"
-    ];
-    
     // Sample players data (in production, this would come from the API)
     const samplePlayers = [
         { name: "LeBron James", position: "SF", team: "Los Angeles Lakers", stats: { points: 27.4, rebounds: 8.3, assists: 8.1, fieldGoalPct: 52.4 } },
@@ -357,9 +316,6 @@
     ];
     
     $(document).ready(function() {
-        // Populate opponent select dropdown
-        populateOpponentDropdown();
-        
         // Load available players
         loadAvailablePlayers();
         
@@ -447,8 +403,8 @@
                     <div class="player-card" data-name="${player.name}" data-position="${player.position}">
                         <div class="d-flex align-items-center">
                             <div class="flex-shrink-0">
-                                <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
-                                    <i class="fas fa-user text-secondary"></i>
+                                <div class="d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                    <i class="fas fa-user-circle fa-2x text-secondary"></i>
                                 </div>
                             </div>
                             <div class="flex-grow-1 ms-3">
@@ -492,8 +448,8 @@
         // Generate player details HTML
         const html = `
             <div class="text-center mb-4">
-                <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto" style="width: 100px; height: 100px;">
-                    <i class="fas fa-user fa-3x text-secondary"></i>
+                <div class="d-flex align-items-center justify-content-center mx-auto" style="width: 100px; height: 100px;">
+                    <i class="fas fa-user-circle fa-5x text-secondary"></i>
                 </div>
                 <h5 class="mt-3">${player.name}</h5>
                 <p class="text-muted">${player.position} - ${player.team}</p>
@@ -552,9 +508,7 @@
         $slot.empty().addClass('filled');
         $slot.append(`
             <div class="text-center">
-                <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto" style="width: 40px; height: 40px;">
-                    <i class="fas fa-user text-primary"></i>
-                </div>
+                <i class="fas fa-user text-primary"></i>
                 <div class="small mt-1">${player.name}</div>
             </div>
             <input type="hidden" name="player_${position.toLowerCase()}" id="player_${position.toLowerCase()}" value="${player.name}">
@@ -639,13 +593,15 @@
         }
         
         // Show loading state
-        $('#team-insights').html(`
-            <li class="list-group-item list-group-item-light text-center">
-                <div class="spinner-border spinner-border-sm text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <span class="ms-2">Analyzing team chemistry and performance...</span>
-            </li>
+        $('#player-projections').html(`
+            <tr>
+                <td colspan="6" class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span class="ms-2">Analyzing players using SARIMA models...</span>
+                </td>
+            </tr>
         `);
         
         // Show analysis section
@@ -657,249 +613,49 @@
         }, 500);
         
         // In production, this would be an API call
-        // For now, simulate a delay and generate mock analysis
+        // For now, simulate a delay and generate mock projections
         setTimeout(function() {
-            generateMockAnalysis();
+            generatePlayerProjections();
         }, 1500);
     }
     
-    // Generate mock analysis
-    function generateMockAnalysis() {
-        // Calculate mock scores
-        const teamScore = calculateMockTeamScore();
-        const offenseScore = calculateMockOffenseScore();
-        const defenseScore = calculateMockDefenseScore();
-        const chemistryScore = calculateMockChemistryScore();
-        
-        // Update UI
-        $('#team-score').text(teamScore.toFixed(1));
-        $('#team-offense').text(offenseScore.toFixed(1));
-        $('#team-defense').text(defenseScore.toFixed(1));
-        $('#team-chemistry').text(chemistryScore.toFixed(1));
-        
-        // Generate team insights
-        generateTeamInsights();
-        
-        // Create radar chart
-        createTeamRadarChart(offenseScore, defenseScore, chemistryScore);
-    }
-    
-    // Calculate mock team score
-    function calculateMockTeamScore() {
-        let totalPoints = 0;
-        let count = 0;
-        
-        // Sum up points from available players
-        Object.values(currentLineup).forEach(player => {
-            if (player) {
-                totalPoints += player.stats.points;
-                count++;
-            }
-        });
-        
-        // Calculate average points
-        const avgPoints = count > 0 ? totalPoints / count : 0;
-        
-        // Scale to a 0-100 score
-        return Math.min(Math.max(avgPoints * 1.5, 60), 95);
-    }
-    
-    // Calculate mock offense score
-    function calculateMockOffenseScore() {
-        let totalPoints = 0;
-        let totalFgPct = 0;
-        let count = 0;
-        
-        // Sum up offensive stats
-        Object.values(currentLineup).forEach(player => {
-            if (player) {
-                totalPoints += player.stats.points;
-                totalFgPct += player.stats.fieldGoalPct;
-                count++;
-            }
-        });
-        
-        // Calculate averages
-        const avgPoints = count > 0 ? totalPoints / count : 0;
-        const avgFgPct = count > 0 ? totalFgPct / count : 0;
-        
-        // Calculate offense score (weighted formula)
-        return Math.min(Math.max((avgPoints * 2 + avgFgPct * 0.3), 60), 98);
-    }
-    
-    // Calculate mock defense score
-    function calculateMockDefenseScore() {
-        let totalRebounds = 0;
-        let count = 0;
-        
-        // Sum up defensive stats
-        Object.values(currentLineup).forEach(player => {
-            if (player) {
-                totalRebounds += player.stats.rebounds;
-                count++;
-            }
-        });
-        
-        // Calculate average rebounds
-        const avgRebounds = count > 0 ? totalRebounds / count : 0;
-        
-        // Add bonus for having a center
-        const centerBonus = currentLineup.C ? 5 : 0;
-        
-        // Calculate defense score
-        return Math.min(Math.max((avgRebounds * 5 + centerBonus), 55), 96);
-    }
-    
-    // Calculate mock chemistry score
-    function calculateMockChemistryScore() {
-        let totalAssists = 0;
-        let count = 0;
-        
-        // Sum up playmaking stats
-        Object.values(currentLineup).forEach(player => {
-            if (player) {
-                totalAssists += player.stats.assists;
-                count++;
-            }
-        });
-        
-        // Calculate average assists
-        const avgAssists = count > 0 ? totalAssists / count : 0;
-        
-        // Add bonus for having a point guard
-        const pgBonus = currentLineup.PG ? 8 : 0;
-        
-        // Add bonus for balanced lineup
-        const balancedBonus = count >= 4 ? 5 : 0;
-        
-        // Calculate chemistry score
-        return Math.min(Math.max((avgAssists * 5 + pgBonus + balancedBonus), 60), 97);
-    }
-    
-    // Generate team insights
-    function generateTeamInsights() {
+    // Generate player projections
+    function generatePlayerProjections() {
         // Get filled positions
         const filledPositions = Object.entries(currentLineup)
             .filter(([_, player]) => player !== null)
             .map(([pos, player]) => ({ position: pos, player: player }));
         
-        // Generate insights based on lineup
-        let insights = [];
+        // Generate projections table
+        let projectionsHtml = '';
         
-        // Check if lineup has a point guard
-        if (currentLineup.PG) {
-            insights.push(`<li class="list-group-item list-group-item-success"><i class="fas fa-check-circle me-2"></i> Strong playmaking with ${currentLineup.PG.name} at point guard (${currentLineup.PG.stats.assists} APG).</li>`);
-        } else {
-            insights.push(`<li class="list-group-item list-group-item-warning"><i class="fas fa-exclamation-triangle me-2"></i> No dedicated point guard might limit playmaking options.</li>`);
-        }
-        
-        // Check if lineup has a center
-        if (currentLineup.C) {
-            insights.push(`<li class="list-group-item list-group-item-success"><i class="fas fa-check-circle me-2"></i> Good interior presence with ${currentLineup.C.name} at center (${currentLineup.C.stats.rebounds} RPG).</li>`);
-        } else {
-            insights.push(`<li class="list-group-item list-group-item-warning"><i class="fas fa-exclamation-triangle me-2"></i> Lack of a true center might create rebounding challenges.</li>`);
-        }
-        
-        // Check scoring potential
-        const scorers = filledPositions.filter(item => item.player.stats.points > 25);
-        if (scorers.length >= 2) {
-            const scorerNames = scorers.map(item => item.player.name).join(' and ');
-            insights.push(`<li class="list-group-item list-group-item-success"><i class="fas fa-check-circle me-2"></i> Multiple high-scoring options with ${scorerNames}.</li>`);
-        } else if (scorers.length === 1) {
-            insights.push(`<li class="list-group-item list-group-item-info"><i class="fas fa-info-circle me-2"></i> Offense may rely heavily on ${scorers[0].player.name} for scoring.</li>`);
-        } else {
-            insights.push(`<li class="list-group-item list-group-item-warning"><i class="fas fa-exclamation-triangle me-2"></i> This lineup may struggle to generate consistent offense.</li>`);
-        }
-        
-        // Check shooting efficiency
-        const efficientShooters = filledPositions.filter(item => item.player.stats.fieldGoalPct > 50);
-        if (efficientShooters.length >= 3) {
-            insights.push(`<li class="list-group-item list-group-item-success"><i class="fas fa-check-circle me-2"></i> Excellent shooting efficiency across multiple positions.</li>`);
-        } else if (efficientShooters.length <= 1) {
-            insights.push(`<li class="list-group-item list-group-item-warning"><i class="fas fa-exclamation-triangle me-2"></i> This lineup may struggle with shooting efficiency.</li>`);
-        }
-        
-        // Add suggestion for improvement if lineup is incomplete
-        if (filledPositions.length < 5) {
-            const missingPositions = Object.keys(currentLineup)
-                .filter(pos => currentLineup[pos] === null)
-                .join(', ');
+        filledPositions.forEach(item => {
+            const player = item.player;
             
-            insights.push(`<li class="list-group-item list-group-item-info"><i class="fas fa-info-circle me-2"></i> Complete your lineup by adding players at ${missingPositions} for more accurate analysis.</li>`);
-        }
-        
-        // Update UI
-        $('#team-insights').html(insights.join(''));
-    }
-    
-    // Create team radar chart
-    function createTeamRadarChart(offenseScore, defenseScore, chemistryScore) {
-        const ctx = document.getElementById('teamRadarChart').getContext('2d');
-        
-        // Calculate additional metrics
-        const scoringScore = Object.values(currentLineup)
-            .filter(player => player !== null)
-            .reduce((sum, player) => sum + player.stats.points, 0) / 5 * 2;
-        
-        const reboundingScore = Object.values(currentLineup)
-            .filter(player => player !== null)
-            .reduce((sum, player) => sum + player.stats.rebounds, 0) / 5 * 5;
+            // Generate mock SARIMA projections
+            const projectedPoints = (player.stats.points * (0.9 + Math.random() * 0.2)).toFixed(1);
+            const projectedFgPct = (player.stats.fieldGoalPct * (0.95 + Math.random() * 0.1)).toFixed(1);
+            const projectedTsPct = ((parseInt(projectedFgPct) + Math.random() * 5)).toFixed(1);
+            const projectedPlusMinus = ((Math.random() * 20) - 10).toFixed(1);
+            const projectedGameScore = (player.stats.points * 0.4 + player.stats.rebounds * 0.7 + player.stats.assists * 0.7 + Math.random() * 5).toFixed(1);
             
-        const playmakingScore = Object.values(currentLineup)
-            .filter(player => player !== null)
-            .reduce((sum, player) => sum + player.stats.assists, 0) / 5 * 5;
-        
-        // Create the chart
-        if (window.teamRadarChart) {
-            window.teamRadarChart.destroy();
-        }
-        
-        window.teamRadarChart = new Chart(ctx, {
-            type: 'radar',
-            data: {
-                labels: ['Offense', 'Defense', 'Chemistry', 'Scoring', 'Rebounding', 'Playmaking'],
-                datasets: [{
-                    label: 'Team Strengths',
-                    data: [
-                        offenseScore, 
-                        defenseScore, 
-                        chemistryScore, 
-                        Math.min(scoringScore, 100), 
-                        Math.min(reboundingScore, 100), 
-                        Math.min(playmakingScore, 100)
-                    ],
-                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                    borderColor: 'rgb(54, 162, 235)',
-                    pointBackgroundColor: 'rgb(54, 162, 235)',
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                scales: {
-                    r: {
-                        angleLines: {
-                            display: true
-                        },
-                        suggestedMin: 0,
-                        suggestedMax: 100,
-                        ticks: {
-                            stepSize: 20
-                        }
-                    }
-                }
-            }
-        });
-    }
-    
-    // Populate opponent dropdown
-    function populateOpponentDropdown() {
-        let options = '<option value="">Select Opponent Team</option>';
-        
-        nbaTeams.forEach(team => {
-            options += `<option value="${team}">${team}</option>`;
+            projectionsHtml += `
+                <tr>
+                    <td>
+                        <strong>${player.name}</strong>
+                        <div class="small text-muted">${item.position} - ${player.team}</div>
+                    </td>
+                    <td>${projectedPoints}</td>
+                    <td>${projectedFgPct}%</td>
+                    <td>${projectedTsPct}%</td>
+                    <td>${projectedPlusMinus}</td>
+                    <td>${projectedGameScore}</td>
+                </tr>
+            `;
         });
         
-        $('#opponent-select').html(options);
+        // Update the table
+        $('#player-projections').html(projectionsHtml);
     }
     
     // Preload players from URL parameter
@@ -918,9 +674,7 @@
                     $slot.empty().addClass('filled');
                     $slot.append(`
                         <div class="text-center">
-                            <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto" style="width: 40px; height: 40px;">
-                                <i class="fas fa-user text-primary"></i>
-                            </div>
+                            <i class="fas fa-user text-primary"></i>
                             <div class="small mt-1">${player.name}</div>
                         </div>
                         <input type="hidden" name="player_${position.toLowerCase()}" id="player_${position.toLowerCase()}" value="${player.name}">

@@ -23,8 +23,8 @@
             <div class="card-body">
                 <p class="text-muted">Select two players to compare their stats and performance projections.</p>
                 
-                <form action="{{ url_for('compare_results') }}" method="post" class="mt-4">
-                    <div class="row mb-4">
+                <form action="{{ url_for('compare_results') }}" method="get" class="mt-4">
+                    <div class="row align-items-center">
                         <div class="col-md-5">
                             <label for="player1" class="form-label">First Player</label>
                             <div class="input-group">
@@ -50,16 +50,7 @@
                         </div>
                     </div>
                     
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <label for="opponent" class="form-label">Against Team (Optional)</label>
-                            <select class="form-select" id="opponent" name="opponent">
-                                <option value="">Any Opponent</option>
-                                <!-- List of NBA teams will be populated with JavaScript -->
-                            </select>
-                            <div class="form-text">See how these players perform against a specific team.</div>
-                        </div>
-                        
+                    <div class="row mt-4">
                         <div class="col-md-6">
                             <label for="days_ahead" class="form-label">Prediction Time Frame</label>
                             <select class="form-select" id="days_ahead" name="days_ahead">
@@ -69,94 +60,11 @@
                             </select>
                             <div class="form-text">How far into the future to project performance.</div>
                         </div>
-                    </div>
-                    
-                    <div class="text-center mt-4">
-                        <button type="submit" class="btn btn-primary px-5">Compare Players</button>
+                        <div class="col-md-6 text-md-end mt-4 mt-md-0">
+                            <button type="submit" class="btn btn-primary px-5">Compare Players</button>
+                        </div>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row mb-5">
-    <div class="col-md-12">
-        <h3 class="h4 mb-4">Popular Comparisons</h3>
-        <div class="row row-cols-1 row-cols-md-3 g-4">
-            <div class="col">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <div class="d-flex justify-content-around mb-3">
-                            <div class="player-avatar">
-                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
-                                    <i class="fas fa-user fa-2x text-secondary"></i>
-                                </div>
-                                <p class="mt-2 mb-0">LeBron James</p>
-                            </div>
-                            <div class="vs-badge d-flex align-items-center">
-                                <span class="badge bg-secondary px-3">VS</span>
-                            </div>
-                            <div class="player-avatar">
-                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
-                                    <i class="fas fa-user fa-2x text-secondary"></i>
-                                </div>
-                                <p class="mt-2 mb-0">Kevin Durant</p>
-                            </div>
-                        </div>
-                        <a href="{{ url_for('compare_results') }}?player1=LeBron James&player2=Kevin Durant" class="btn btn-sm btn-outline-primary mt-2">View Comparison</a>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <div class="d-flex justify-content-around mb-3">
-                            <div class="player-avatar">
-                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
-                                    <i class="fas fa-user fa-2x text-secondary"></i>
-                                </div>
-                                <p class="mt-2 mb-0">Stephen Curry</p>
-                            </div>
-                            <div class="vs-badge d-flex align-items-center">
-                                <span class="badge bg-secondary px-3">VS</span>
-                            </div>
-                            <div class="player-avatar">
-                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
-                                    <i class="fas fa-user fa-2x text-secondary"></i>
-                                </div>
-                                <p class="mt-2 mb-0">Damian Lillard</p>
-                            </div>
-                        </div>
-                        <a href="{{ url_for('compare_results') }}?player1=Stephen Curry&player2=Damian Lillard" class="btn btn-sm btn-outline-primary mt-2">View Comparison</a>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <div class="d-flex justify-content-around mb-3">
-                            <div class="player-avatar">
-                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
-                                    <i class="fas fa-user fa-2x text-secondary"></i>
-                                </div>
-                                <p class="mt-2 mb-0">Nikola Jokić</p>
-                            </div>
-                            <div class="vs-badge d-flex align-items-center">
-                                <span class="badge bg-secondary px-3">VS</span>
-                            </div>
-                            <div class="player-avatar">
-                                <div class="player-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
-                                    <i class="fas fa-user fa-2x text-secondary"></i>
-                                </div>
-                                <p class="mt-2 mb-0">Joel Embiid</p>
-                            </div>
-                        </div>
-                        <a href="{{ url_for('compare_results') }}?player1=Nikola Jokić&player2=Joel Embiid" class="btn btn-sm btn-outline-primary mt-2">View Comparison</a>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -175,7 +83,7 @@
                     <li><strong>Game Score:</strong> Single number that attempts to capture a player's overall productivity</li>
                     <li><strong>Advanced Metrics:</strong> Including Offensive and Defensive ratings</li>
                 </ul>
-                <p>Our predictions use ARIMA/SARIMA models trained on each player's historical performance data, with adjustments for matchup-specific factors.</p>
+                <p>Our predictions use ARIMA/SARIMA models trained on each player's historical performance data.</p>
             </div>
         </div>
     </div>
@@ -184,26 +92,7 @@
 
 {% block extra_js %}
 <script>
-    // NBA Teams list
-    const nbaTeams = [
-        "Atlanta Hawks", "Boston Celtics", "Brooklyn Nets", "Charlotte Hornets",
-        "Chicago Bulls", "Cleveland Cavaliers", "Dallas Mavericks", "Denver Nuggets",
-        "Detroit Pistons", "Golden State Warriors", "Houston Rockets", "Indiana Pacers",
-        "Los Angeles Clippers", "Los Angeles Lakers", "Memphis Grizzlies", "Miami Heat",
-        "Milwaukee Bucks", "Minnesota Timberwolves", "New Orleans Pelicans", "New York Knicks",
-        "Oklahoma City Thunder", "Orlando Magic", "Philadelphia 76ers", "Phoenix Suns",
-        "Portland Trail Blazers", "Sacramento Kings", "San Antonio Spurs", "Toronto Raptors",
-        "Utah Jazz", "Washington Wizards"
-    ];
-    
     $(document).ready(function() {
-        // Populate teams dropdown
-        let teamOptions = '<option value="">Any Opponent</option>';
-        nbaTeams.forEach(team => {
-            teamOptions += `<option value="${team}">${team}</option>`;
-        });
-        $('#opponent').html(teamOptions);
-        
         // Initialize player autocomplete
         $('.player-autocomplete').autocomplete({
             source: function(request, response) {
