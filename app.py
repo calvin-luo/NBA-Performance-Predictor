@@ -145,7 +145,7 @@ def api_search_player():
     if not query or len(query) < 2:
         return jsonify([])
     
-    # Dummy data for MVP
+    # Simplified list of common NBA players
     players = [
         "LeBron James", "Stephen Curry", "Kevin Durant", 
         "Giannis Antetokounmpo", "Luka Dončić", "Nikola Jokić",
@@ -187,8 +187,6 @@ def api_player_stats(player_name):
 @app.route("/api/player_prediction/<player_name>")
 def api_player_prediction(player_name):
     """Get player predictions based on time series analysis."""
-    # No opponent parameter - simplified
-    
     # Get player stats
     stats_df = player_stats.get_player_stats(player_name)
     
