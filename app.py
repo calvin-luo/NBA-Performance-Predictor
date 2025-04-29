@@ -1,83 +1,72 @@
 import logging
 import os
 from datetime import datetime, timedelta
+from typing import Dict, Any, List
 
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Flask, jsonify, render_template, request
 
 # ────────────────────────────────────────────────────────────────────────────────
-#  Internal modules
-#  (These existed in the original repo – we keep the ones that are still used.)
+#  Internal modules (kept lean ‑ only what we still use)
 # ────────────────────────────────────────────────────────────────────────────────
 from data.database import Database
-from scrapers.game_scraper import NBAApiScraper
-from scrapers.player_scraper import RotowireScraper  # still used for injuries / starters
-from analysis.player_stats import PlayerStatsCollector
+from scrapers.game_scraper import NBAApiScraper  # pulls today’s schedule
 from analysis.time_series import GamePredictor, PlayerTimeSeriesAnalyzer
+from analysis.player_stats import PlayerStatsCollector
 
 # ────────────────────────────────────────────────────────────────────────────────
 #  Logging
 # ────────────────────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s · %(levelname)s · %(name)s · %(message)s",
 )
 logger = logging.getLogger("StatLemon.app")
 
 # ────────────────────────────────────────────────────────────────────────────────
-#  Flask App
+#  Flask app & core singletons
 # ────────────────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
-# ────────────────────────────────────────────────────────────────────────────────
-#  Core services (DB, scrapers, analytics) – singletons for the life of the app
-# ────────────────────────────────────────────────────────────────────────────────
-db: Database = Database()
+db = Database()
+# Ensure tables exist at boot so first request doesn’t crash
+try:
+    db.initialize_database()
+except Exception as e:
+    logger.error("DB init failed: %s", e)
 
 game_scraper = NBAApiScraper(db)
-rotowire_scraper = RotowireScraper(db)
-
-player_stats_collector = PlayerStatsCollector()
+player_stats = PlayerStatsCollector()
 series_analyzer = PlayerTimeSeriesAnalyzer(min_games=10)
 game_predictor = GamePredictor(min_games=10)
 
-# ────────────────────────────────────────────────────────────────────────────────
-#  Simple in‑memory caches to avoid hammering external APIs on every request.
-#  (In production you’d swap this for Redis or similar.)
-# ────────────────────────────────────────────────────────────────────────────────
-PLAYER_STATS_CACHE: dict[str, dict] = {}
-PLAYER_STATS_TTL = 60 * 60  # 1 hour
-
-LINEUP_PROJECTION_CACHE: dict[str, dict] = {}
-LINEUP_CACHE_TTL = 10 * 60  # 10 minutes
-
-TODAY_GAMES_CACHE: dict[str, dict] = {}
-TODAY_GAMES_TTL = 10 * 60  # refresh scoreboard every 10 mins
-
+# Simple in‑memory caches (swap for Redis later)
+CACHE: Dict[str, Any] = {}
+TTL: Dict[str, int] = {
+    "player_stats": 60 * 60,      # 1 h
+    "today_games": 10 * 60,       # 10 min
+    "lineup_projection": 10 * 60,
+}
 
 # ────────────────────────────────────────────────────────────────────────────────
-#  Helper functions
+#  Helpers
 # ────────────────────────────────────────────────────────────────────────────────
 
-def _cache_get(cache: dict, key: str, ttl: int):
-    """Return cached item if it exists and isn’t stale."""
-    entry = cache.get(key)
+def _cache_get(key: str):
+    entry = CACHE.get(key)
     if not entry:
         return None
-    value, timestamp = entry
-    if datetime.utcnow() - timestamp > timedelta(seconds=ttl):
-        cache.pop(key, None)
+    value, ts = entry
+    if datetime.utcnow() - ts > timedelta(seconds=TTL.get(key, 0)):
+        CACHE.pop(key, None)
         return None
     return value
 
-
-def _cache_set(cache: dict, key: str, value, ttl: int):
-    cache[key] = (value, datetime.utcnow())
-
+def _cache_set(key: str, value):
+    CACHE[key] = (value, datetime.utcnow())
 
 # ────────────────────────────────────────────────────────────────────────────────
-#  Page Routes (HTML)
+#  Page routes
 # ────────────────────────────────────────────────────────────────────────────────
-
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -85,7 +74,6 @@ def index():
 
 @app.route("/about")
 def about():
-    # Placeholder page – content trimmed in Step 1
     return render_template("about.html")
 
 
@@ -94,93 +82,109 @@ def compare_form():
     return render_template("compare.html")
 
 
-@app.post("/compare_results")
+@app.route("/compare/results")
 def compare_results():
-    """Handle the compare form; minimal logic until Step 2 refactor."""
-    player1 = request.form["player1"].strip()
-    player2 = request.form["player2"].strip()
-    # TODO: call analytics layer – for now just echo
-    return render_template(
-        "compare_results.html",
-        player1=player1,
-        player2=player2,
-    )
+    # This placeholder simply echoes query params; real compare logic trimmed for MVP
+    players = request.args.getlist("player")
+    return render_template("compare_results.html", players=players)
 
 
-@app.route("/lineup_builder")
+@app.route("/lineup-builder")
 def lineup_builder():
     return render_template("lineup_builder.html")
 
-# ❌  The “/schedule” route and template were removed in Step 1 – no longer here.
-
 # ────────────────────────────────────────────────────────────────────────────────
-#  API Routes (JSON)
+#  API routes
 # ────────────────────────────────────────────────────────────────────────────────
-
 @app.get("/api/today_games")
 def api_today_games():
-    """Return today’s NBA games with minimal info for the home‑page table."""
-    today = datetime.utcnow().date().isoformat()
-    cached = _cache_get(TODAY_GAMES_CACHE, today, TODAY_GAMES_TTL)
-    if cached:
-        return jsonify(cached)
+    """Return today’s games (Time, Away, Home, Venue). Auto‑scrapes and caches."""
+    # --- caching first
+    cached = _cache_get("today_games")
+    if cached is not None:
+        return jsonify({"games": cached})
 
-    games = game_scraper.get_games_for_date(today)
-    # Map / trim fields
-    payload = {
-        "date": today,
-        "games": [
-            {
-                "game_id": g["game_id"],
-                "game_time": g.get("game_time", "TBD"),
-                "away_team": g["away_team"],
-                "home_team": g["home_team"],
-                "venue": g.get("venue", "TBD"),
-            }
-            for g in games
-        ],
-    }
-    _cache_set(TODAY_GAMES_CACHE, today, payload, TODAY_GAMES_TTL)
-    return jsonify(payload)
+    target_date = datetime.utcnow().strftime("%Y-%m-%d")
+    logger.info("Fetching games for %s", target_date)
+
+    try:
+        db.initialize_database()  # ensure table exists
+        games = db.get_games_by_date(target_date)
+    except Exception as db_err:
+        logger.error("DB error: %s", db_err)
+        games = []
+
+    # If DB empty, try live scrape once
+    if not games:
+        try:
+            scraped = game_scraper.scrape_and_save_games(days_ahead=0)
+            logger.info("Scraped & stored %d games", scraped)
+            games = db.get_games_by_date(target_date)
+        except Exception as scrape_err:
+            logger.warning("Scrape failed: %s", scrape_err)
+            return jsonify({"games": []}), 503
+
+    # Trim to the 4 required columns
+    trimmed: List[Dict[str, str]] = [
+        {
+            "game_time": g["game_time"],
+            "away_team": g["away_team"],
+            "home_team": g["home_team"],
+            "venue": g.get("venue", "") or "TBD",
+        }
+        for g in games
+    ]
+
+    _cache_set("today_games", trimmed)
+    return jsonify({"games": trimmed})
 
 
 @app.post("/api/lineup_projection")
 def api_lineup_projection():
-    """Return SARIMA projections for the next game of the supplied players."""
-    data = request.get_json(force=True)
-    player_ids = data.get("playerIds")
-    if not player_ids or len(player_ids) != 5:
-        return jsonify({"error": "Exactly five playerIds required."}), 400
+    """Project the next‑game stats for a five‑player lineup using SARIMA."""
+    payload = request.get_json(force=True)
+    player_names: List[str] = payload.get("playerIds", [])[:5]
 
-    cache_key = "-".join(sorted(player_ids))
-    cached = _cache_get(LINEUP_PROJECTION_CACHE, cache_key, LINEUP_CACHE_TTL)
-    if cached:
-        return jsonify(cached)
+    if len(player_names) != 5:
+        return jsonify({"error": "Exactly 5 players required"}), 400
 
-    projections: dict[str, dict] = {}
-    for pid in player_ids:
-        series = series_analyzer.to_series(pid)
-        projections[pid] = game_predictor.sarima_next_game(series)
+    cache_key = "|".join(sorted(player_names))
+    cached = _cache_get(f"lineup:{cache_key}")
+    if cached is not None:
+        return jsonify({"projections": cached})
 
-    _cache_set(LINEUP_PROJECTION_CACHE, cache_key, projections, LINEUP_CACHE_TTL)
+    projections: Dict[str, Dict[str, float]] = {}
+
+    for name in player_names:
+        try:
+            stats_df = player_stats.get_player_stats(name)
+            if stats_df is None or stats_df.empty:
+                continue
+            forecast = series_analyzer.forecast_player_performance(name, stats_df)
+            projections[name] = {
+                metric: round(val["forecast"], 2) for metric, val in forecast.items()
+            }
+        except Exception as e:
+            logger.warning("Projection failed for %s: %s", name, e)
+            continue
+
+    _cache_set(f"lineup:{cache_key}", projections)
     return jsonify({"projections": projections})
 
 
 # ────────────────────────────────────────────────────────────────────────────────
-#  Error Handlers
+#  Entry‑point helper (so `python app.py` just works)
 # ────────────────────────────────────────────────────────────────────────────────
-
-@app.errorhandler(404)
-@app.errorhandler(500)
-def handle_error(err):
-    message = getattr(err, "description", str(err))
-    return render_template("error.html", message=message), err.code if hasattr(err, "code") else 500
-
-
-# ────────────────────────────────────────────────────────────────────────────────
-#  Entrypoint
-# ────────────────────────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=bool(os.environ.get("FLASK_DEBUG")))
+    # 1 – Use an explicit, absolute DB path
+    DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "nba_stats.db"))
+    db = Database(DB_PATH)
+    game_scraper = NBAApiScraper(db)
+
+    # 2 – Initialise schema and seed today's games
+    db.initialize_database()
+    game_scraper.scrape_and_save_games(days_ahead=0)
+
+    # 3 – Start Flask (routes must use the *same* db instance or DB_PATH)
+    app.config["DB_PATH"] = DB_PATH          # pass it along if you like
+    app.run(debug=True, port=5000)
