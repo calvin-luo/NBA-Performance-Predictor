@@ -1,362 +1,59 @@
 {% extends "base.html" %}
 
-{% block title %}Stat Lemon - Fantasy Basketball Sandbox{% endblock %}
+{% block title %}Stat Lemon - Home{% endblock %}
 
 {% block content %}
-<div class="row align-items-center py-5">
-    <div class="col-md-6">
-        <h1 class="display-4 fw-bold">Welcome to Stat Lemon</h1>
-        <p class="lead">The fantasy basketball sandbox that predicts NBA player performance using advanced time series analysis.</p>
-        <p>Compare players, build dream lineups, simulate matchups, and explore performance projections backed by data science.</p>
-        <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-            <a href="{{ url_for('compare_form') }}" class="btn btn-primary btn-lg px-4 me-md-2">Compare Players</a>
-            <a href="{{ url_for('lineup_builder') }}" class="btn btn-outline-secondary btn-lg px-4">Build Lineup</a>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <img src="{{ url_for('static', filename='img/basketball-hero.svg') }}" class="img-fluid" alt="Basketball analytics illustration">
+<!-- Hero / Intro -->
+<div class="row mb-5">
+    <div class="col-lg-8 mx-auto text-center">
+        <h1 class="display-5 fw-bold mb-3">
+            <i class="fas fa-lemon text-warning me-2"></i>
+            Welcome to <span class="text-primary">Stat&nbsp;Lemon</span>
+        </h1>
+        <p class="lead">An NBA analytics sandbox that turns raw box‑scores into <strong>actionable projections</strong> using SARIMA time‑series modelling. Compare players, build line‑ups, and prep for your next fantasy matchup—all with no fluff or over‑engineering.</p>
     </div>
 </div>
 
-<hr class="my-5">
-
-<!-- Features Section -->
-<div class="row g-4 py-5">
-    <div class="col-12">
-        <h2 class="text-center mb-5">What You Can Do With Stat Lemon</h2>
-    </div>
-    
-    <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-            <div class="card-body text-center">
-                <i class="fas fa-chart-line fa-3x mb-3 text-primary"></i>
-                <h3 class="card-title h5">Player Projections</h3>
-                <p class="card-text">Explore detailed performance projections for any NBA player using advanced time series models.</p>
-                <a href="#" class="btn btn-sm btn-outline-primary">Learn More</a>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-            <div class="card-body text-center">
-                <i class="fas fa-users fa-3x mb-3 text-primary"></i>
-                <h3 class="card-title h5">Dream Teams</h3>
-                <p class="card-text">Build your fantasy lineup and see how players would perform together based on complementary skills.</p>
-                <a href="{{ url_for('lineup_builder') }}" class="btn btn-sm btn-outline-primary">Try Builder</a>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-            <div class="card-body text-center">
-                <i class="fas fa-trophy fa-3x mb-3 text-primary"></i>
-                <h3 class="card-title h5">Matchup Simulator</h3>
-                <p class="card-text">Simulate games between any two teams and see projected outcomes with statistical confidence.</p>
-                <a href="{{ url_for('matchup_simulator') }}" class="btn btn-sm btn-outline-primary">Simulate Now</a>
-            </div>
-        </div>
-    </div>
-</div>
-
-<hr class="my-5">
-
-<!-- Today's Games Section -->
-<div class="row py-5">
-    <div class="col-12">
-        <h2 class="mb-4">Today's Games</h2>
+<!-- Today’s Games -->
+<div class="row mb-4">
+    <div class="col-lg-10 mx-auto">
         <div class="card shadow-sm">
-            <div class="card-body">
-                <div id="alerts-container">
-                    <!-- Alerts will be displayed here -->
-                </div>
-                <!-- Find this section in index.html -->
+            <div class="card-header bg-primary text-white d-flex align-items-center">
+                <h4 class="mb-0 me-auto"><i class="fas fa-calendar-day me-2"></i>Today’s Games</h4>
+                <span id="games-count" class="badge bg-light text-primary fw-normal"></span>
+            </div>
+            <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle">
-                        <thead>
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
                             <tr>
-                                <th>Time</th>
-                                <th>Away Team</th>
-                                <th>Home Team</th>
-                                <th>Venue</th>
-                                <th>Team Records</th>
+                                <th class="col-2">Time</th>
+                                <th class="col-3">Away Team</th>
+                                <th class="col-3">Home Team</th>
+                                <th class="col-4">Venue</th>
                             </tr>
                         </thead>
                         <tbody id="today-games">
-                            <!-- This will be populated with JavaScript -->
+                            <!-- Populated by main.js › loadTodayGames() -->
                             <tr>
-                                <td colspan="5" class="text-center py-3">
+                                <td colspan="4" class="py-4 text-center">
                                     <div class="spinner-border text-primary" role="status">
-                                        <span class="visually-hidden">Loading...</span>
+                                        <span class="visually-hidden">Loading…</span>
                                     </div>
-                                    <p class="mt-2">Loading today's games...</p>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-                <div class="text-end">
-                    <a href="{{ url_for('schedule') }}" class="btn btn-outline-primary">View Full Schedule</a>
-                </div>
             </div>
         </div>
-    </div>
-</div>
-
-<hr class="my-5">
-
-<!-- How It Works Section -->
-<div class="row py-5">
-    <div class="col-12 text-center mb-4">
-        <h2>How Stat Lemon Works</h2>
-        <p class="lead">Powered by advanced time series analysis and machine learning</p>
-    </div>
-    
-    <div class="col-md-3">
-        <div class="text-center mb-3">
-            <div class="bg-primary text-white rounded-circle d-inline-flex justify-content-center align-items-center" style="width: 50px; height: 50px;">
-                <span class="fw-bold">1</span>
-            </div>
-        </div>
-        <h4 class="h5 text-center">Data Collection</h4>
-        <p class="text-center small">We collect detailed performance data for every NBA player throughout the season</p>
-    </div>
-    
-    <div class="col-md-3">
-        <div class="text-center mb-3">
-            <div class="bg-primary text-white rounded-circle d-inline-flex justify-content-center align-items-center" style="width: 50px; height: 50px;">
-                <span class="fw-bold">2</span>
-            </div>
-        </div>
-        <h4 class="h5 text-center">Time Series Analysis</h4>
-        <p class="text-center small">ARIMA/SARIMA models identify trends, patterns, and seasonality in player performance</p>
-    </div>
-    
-    <div class="col-md-3">
-        <div class="text-center mb-3">
-            <div class="bg-primary text-white rounded-circle d-inline-flex justify-content-center align-items-center" style="width: 50px; height: 50px;">
-                <span class="fw-bold">3</span>
-            </div>
-        </div>
-        <h4 class="h5 text-center">Performance Projection</h4>
-        <p class="text-center small">Sophisticated algorithms forecast individual player metrics with confidence intervals</p>
-    </div>
-    
-    <div class="col-md-3">
-        <div class="text-center mb-3">
-            <div class="bg-primary text-white rounded-circle d-inline-flex justify-content-center align-items-center" style="width: 50px; height: 50px;">
-                <span class="fw-bold">4</span>
-            </div>
-        </div>
-        <h4 class="h5 text-center">Team Simulation</h4>
-        <p class="text-center small">Combines individual projections to simulate how teams and custom lineups will perform</p>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    // Global variables for games handling
-    let todayGamesLoaded = false;
-    let loadingGames = false;
-    let retryCount = 0;
-    const MAX_RETRIES = 3;
-
-    // Load today's games when document is ready
-    $(document).ready(function() {
-        loadTodayGames();
-    });
-
-    // Function to load today's games
-    function loadTodayGames() {
-        // Prevent multiple simultaneous requests
-        if (loadingGames) return;
-        
-        loadingGames = true;
-        
-        // Show loading state
-        $('#today-games').html(`
-            <tr>
-                <td colspan="6" class="text-center py-3">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2">Loading today's games...</p>
-                </td>
-            </tr>
-        `);
-        
-        // Clear any existing alerts
-        $('#alerts-container').empty();
-        
-        // Make the API request
-        $.ajax({
-            url: "/api/today_games",
-            method: "GET",
-            dataType: "json",
-            timeout: 10000, // 10 second timeout
-            success: function(data) {
-                // Reset retry count on success
-                retryCount = 0;
-                loadingGames = false;
-                todayGamesLoaded = true;
-                
-                // Process and display the games
-                processGamesData(data);
-            },
-            error: function(jqXHR, textStatus, errorThrown) {
-                loadingGames = false;
-                
-                // Log the error
-                console.error("Error loading games:", textStatus, errorThrown);
-                
-                // Check for specific error types
-                let errorMessage = "An error occurred while loading today's games.";
-                
-                if (textStatus === "timeout") {
-                    errorMessage = "Request timed out. The server might be busy.";
-                } else if (jqXHR.status === 404) {
-                    errorMessage = "The games data could not be found on the server.";
-                } else if (jqXHR.status === 500) {
-                    errorMessage = "Server error occurred. Our team has been notified.";
-                }
-                
-                // Show error message
-                $('#alerts-container').html(`
-                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        <i class="fas fa-exclamation-circle me-2"></i>
-                        ${errorMessage}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                `);
-                
-                // Show error in games table with retry button
-                displayErrorState(errorMessage);
-                
-                // Auto-retry if we haven't exceeded the maximum retries
-                retryCount++;
-                if (retryCount <= MAX_RETRIES) {
-                    setTimeout(loadTodayGames, 3000 * retryCount); // Increase delay with each retry
-                }
-            }
-        });
-    }
-    
-    // Process and display games data
-    function processGamesData(data) {
-        let gamesHtml = '';
-        
-        // Check if we have games data
-        if (data.games && data.games.length > 0) {
-            // Process each game
-            data.games.forEach(function(game) {
-                try {
-                    // Skip games with missing essential data
-                    if (!game.home_team || !game.away_team) {
-                        console.warn("Skipping game with incomplete data:", game);
-                        return;
-                    }
-                    
-                    // Create team logos with error handling
-                    const homeTeamLogo = `<img src="/static/img/teams/${game.home_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.home_team}" onerror="this.onerror=null; this.src='/static/img/placeholder-team.png';">`;
-                    const awayTeamLogo = `<img src="/static/img/teams/${game.away_team.replace(/\s+/g, '').toLowerCase()}.png" width="30" height="30" alt="${game.away_team}" onerror="this.onerror=null; this.src='/static/img/placeholder-team.png';">`;
-                    
-                    // Generate prediction HTML
-                    let predictionHtml = '<span class="text-muted">Not available</span>';
-                    
-                    if (game.prediction) {
-                        const winner = game.prediction.predicted_winner;
-                        const probability = (game.prediction.win_probability * 100).toFixed(1);
-                        const winnerClass = winner === game.home_team ? 'text-success' : 'text-danger';
-                        
-                        predictionHtml = `
-                            <span class="${winnerClass} fw-bold">${winner}</span>
-                            <span class="small text-muted">(${probability}%)</span>
-                        `;
-                    }
-                    
-                    // Add game row
-                    gamesHtml += `
-                        <tr>
-                            <td>${game.game_time || 'TBD'}</td>
-                            <td>
-                                <div class="d-flex align-items-center">
-                                    ${awayTeamLogo}
-                                    <span class="ms-2">${game.away_team}</span>
-                                </div>
-                            </td>
-                            <td>@</td>
-                            <td>
-                                <div class="d-flex align-items-center">
-                                    ${homeTeamLogo}
-                                    <span class="ms-2">${game.home_team}</span>
-                                </div>
-                            </td>
-                            <td>${predictionHtml}</td>
-                            <td>
-                                <a href="/matchup_simulator?home=${encodeURIComponent(game.home_team)}&away=${encodeURIComponent(game.away_team)}" class="btn btn-sm btn-outline-primary">Simulate</a>
-                            </td>
-                        </tr>
-                    `;
-                } catch (error) {
-                    console.error("Error processing game:", error);
-                    // Skip this game but continue with others
-                }
-            });
-        }
-        
-        // Update the table with games or show "no games" message
-        if (gamesHtml) {
-            $('#today-games').html(gamesHtml);
-        } else {
-            displayNoGamesState();
-        }
-        
-        // Show success message if status is provided and is "success"
-        if (data.status === "success" && data.message) {
-            $('#alerts-container').html(`
-                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                    <i class="fas fa-check-circle me-2"></i>
-                    ${data.message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            `);
-        }
-    }
-    
-    // Display error state
-    function displayErrorState(errorMessage) {
-        $('#today-games').html(`
-            <tr>
-                <td colspan="6" class="text-center py-4">
-                    <div class="error-container mb-3">
-                        <i class="fas fa-exclamation-circle fa-3x text-danger mb-3"></i>
-                        <h5 class="text-danger">Unable to load games</h5>
-                        <p>${errorMessage}</p>
-                    </div>
-                    <button id="retry-button" class="btn btn-primary" onclick="loadTodayGames()">
-                        <i class="fas fa-sync-alt me-2"></i> Retry
-                    </button>
-                </td>
-            </tr>
-        `);
-    }
-    
-    // Display no games state
-    function displayNoGamesState() {
-        $('#today-games').html(`
-            <tr>
-                <td colspan="6" class="text-center py-4">
-                    <div class="mb-3">
-                        <i class="fas fa-calendar-day fa-3x text-muted mb-3"></i>
-                        <h5>No games scheduled for today</h5>
-                        <p class="text-muted">Check back later or view the full schedule.</p>
-                    </div>
-                    <a href="/schedule" class="btn btn-outline-primary mt-2">View Schedule</a>
-                </td>
-            </tr>
-        `);
-    }
+    // Kick off today’s games fetch once the DOM is ready
+    document.addEventListener('DOMContentLoaded', loadTodayGames);
 </script>
 {% endblock %}
