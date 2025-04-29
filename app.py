@@ -1,16 +1,16 @@
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from flask import Flask, jsonify, render_template, request
 
 # ────────────────────────────────────────────────────────────────────────────────
-#  Internal modules (kept lean ‑ only what we still use)
+#  Internal modules
 # ────────────────────────────────────────────────────────────────────────────────
 from data.database import Database
-from scrapers.game_scraper import NBAApiScraper  # pulls today’s schedule
-from analysis.time_series import GamePredictor, PlayerTimeSeriesAnalyzer
+from scrapers.game_scraper import NBAApiScraper  # pulls today's schedule
+from analysis.time_series import PlayerTimeSeriesAnalyzer
 from analysis.player_stats import PlayerStatsCollector
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -28,7 +28,7 @@ logger = logging.getLogger("StatLemon.app")
 app = Flask(__name__)
 
 db = Database()
-# Ensure tables exist at boot so first request doesn’t crash
+# Ensure tables exist at boot so first request doesn't crash
 try:
     db.initialize_database()
 except Exception as e:
@@ -37,13 +37,12 @@ except Exception as e:
 game_scraper = NBAApiScraper(db)
 player_stats = PlayerStatsCollector()
 series_analyzer = PlayerTimeSeriesAnalyzer(min_games=10)
-game_predictor = GamePredictor(min_games=10)
 
-# Simple in‑memory caches (swap for Redis later)
+# Simple in‑memory caches
 CACHE: Dict[str, Any] = {}
 TTL: Dict[str, int] = {
-    "player_stats": 60 * 60,      # 1 h
-    "today_games": 10 * 60,       # 10 min
+    "player_stats": 60 * 60,      # 1 h
+    "today_games": 10 * 60,       # 10 min
     "lineup_projection": 10 * 60,
 }
 
@@ -84,9 +83,9 @@ def compare_form():
 
 @app.route("/compare/results")
 def compare_results():
-    # This placeholder simply echoes query params; real compare logic trimmed for MVP
+    # This function displays results of player comparison
     players = request.args.getlist("player")
-    return render_template("compare_results.html", players=players)
+    return render_template("compare_results.html", player1=players[0], player2=players[1])
 
 
 @app.route("/lineup-builder")
@@ -98,7 +97,7 @@ def lineup_builder():
 # ────────────────────────────────────────────────────────────────────────────────
 @app.get("/api/today_games")
 def api_today_games():
-    """Return today’s games (Time, Away, Home, Venue). Auto‑scrapes and caches."""
+    """Return today's games (Time, Away, Home, Venue). Auto‑scrapes and caches."""
     # --- caching first
     cached = _cache_get("today_games")
     if cached is not None:
@@ -125,7 +124,7 @@ def api_today_games():
             return jsonify({"games": []}), 503
 
     # Trim to the 4 required columns
-    trimmed: List[Dict[str, str]] = [
+    trimmed = [
         {
             "game_time": g["game_time"],
             "away_team": g["away_team"],
@@ -139,21 +138,84 @@ def api_today_games():
     return jsonify({"games": trimmed})
 
 
+@app.route("/api/search_player", methods=["GET"])
+def api_search_player():
+    """Search for players by name - simple placeholder for MVP."""
+    query = request.args.get("q", "").lower()
+    if not query or len(query) < 2:
+        return jsonify([])
+    
+    # Dummy data for MVP
+    players = [
+        "LeBron James", "Stephen Curry", "Kevin Durant", 
+        "Giannis Antetokounmpo", "Luka Dončić", "Nikola Jokić",
+        "Joel Embiid", "Kawhi Leonard", "Jayson Tatum", "Damian Lillard"
+    ]
+    
+    # Simple filtering
+    results = [p for p in players if query in p.lower()]
+    return jsonify(results[:10])  # Limit to 10 results
+
+
+@app.route("/api/player_stats/<player_name>")
+def api_player_stats(player_name):
+    """Get player stats for analysis and visualization."""
+    refresh = request.args.get("refresh", "false").lower() == "true"
+    
+    # Check cache
+    cache_key = f"player_stats_{player_name}"
+    if not refresh:
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return jsonify({"stats": cached})
+    
+    # Get player stats from collector
+    stats_df = player_stats.get_player_stats(player_name)
+    
+    if stats_df is None or stats_df.empty:
+        return jsonify({"error": f"No stats found for {player_name}"}), 404
+    
+    # Convert to dict for JSON serialization
+    stats = stats_df.to_dict('records')
+    
+    # Cache results
+    _cache_set(cache_key, stats)
+    
+    return jsonify({"stats": stats})
+
+
+@app.route("/api/player_prediction/<player_name>")
+def api_player_prediction(player_name):
+    """Get player predictions based on time series analysis."""
+    # No opponent parameter - simplified
+    
+    # Get player stats
+    stats_df = player_stats.get_player_stats(player_name)
+    
+    if stats_df is None or stats_df.empty:
+        return jsonify({"error": f"No stats found for {player_name}"}), 404
+    
+    # Generate prediction
+    forecast = series_analyzer.forecast_player_performance(player_name, stats_df)
+    
+    return jsonify({"prediction": forecast})
+
+
 @app.post("/api/lineup_projection")
 def api_lineup_projection():
     """Project the next‑game stats for a five‑player lineup using SARIMA."""
     payload = request.get_json(force=True)
-    player_names: List[str] = payload.get("playerIds", [])[:5]
+    player_names = payload.get("players", [])[:5]
 
-    if len(player_names) != 5:
-        return jsonify({"error": "Exactly 5 players required"}), 400
+    if len(player_names) < 3:
+        return jsonify({"error": "At least 3 players required"}), 400
 
     cache_key = "|".join(sorted(player_names))
     cached = _cache_get(f"lineup:{cache_key}")
     if cached is not None:
         return jsonify({"projections": cached})
 
-    projections: Dict[str, Dict[str, float]] = {}
+    projections = {}
 
     for name in player_names:
         try:
@@ -173,6 +235,19 @@ def api_lineup_projection():
 
 
 # ────────────────────────────────────────────────────────────────────────────────
+#  Error handlers
+# ────────────────────────────────────────────────────────────────────────────────
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('error.html', message="Page not found"), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    return render_template('error.html', message="Internal server error"), 500
+
+
+# ────────────────────────────────────────────────────────────────────────────────
 #  Entry‑point helper (so `python app.py` just works)
 # ────────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
@@ -185,6 +260,6 @@ if __name__ == "__main__":
     db.initialize_database()
     game_scraper.scrape_and_save_games(days_ahead=0)
 
-    # 3 – Start Flask (routes must use the *same* db instance or DB_PATH)
-    app.config["DB_PATH"] = DB_PATH          # pass it along if you like
+    # 3 – Start Flask
+    app.config["DB_PATH"] = DB_PATH
     app.run(debug=True, port=5000)
