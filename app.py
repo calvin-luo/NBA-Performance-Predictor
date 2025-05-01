@@ -84,8 +84,10 @@ def compare_form():
 @app.route("/compare/results")
 def compare_results():
     # This function displays results of player comparison
-    players = request.args.getlist("player")
-    return render_template("compare_results.html", player1=players[0], player2=players[1])
+    # Get individual player names from form
+    player1 = request.args.get("player1")
+    player2 = request.args.get("player2")
+    return render_template("compare_results.html", player1=player1, player2=player2)
 
 
 @app.route("/lineup-builder")

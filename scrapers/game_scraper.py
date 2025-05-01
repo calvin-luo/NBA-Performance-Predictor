@@ -49,6 +49,40 @@ NBA_TEAMS = {
 # Create reverse mappings
 TEAM_ABBR_TO_NAME = {team_data["abbr"]: team_name for team_name, team_data in NBA_TEAMS.items()}
 
+# Team home venue mapping (fallback for when API doesn't provide venue)
+TEAM_HOME_VENUES = {
+    "Atlanta Hawks": "State Farm Arena",
+    "Boston Celtics": "TD Garden",
+    "Brooklyn Nets": "Barclays Center",
+    "Charlotte Hornets": "Spectrum Center",
+    "Chicago Bulls": "United Center",
+    "Cleveland Cavaliers": "Rocket Mortgage FieldHouse",
+    "Dallas Mavericks": "American Airlines Center",
+    "Denver Nuggets": "Ball Arena",
+    "Detroit Pistons": "Little Caesars Arena",
+    "Golden State Warriors": "Chase Center",
+    "Houston Rockets": "Toyota Center",
+    "Indiana Pacers": "Gainbridge Fieldhouse",
+    "Los Angeles Clippers": "Crypto.com Arena",
+    "Los Angeles Lakers": "Crypto.com Arena",
+    "Memphis Grizzlies": "FedExForum",
+    "Miami Heat": "Kaseya Center",
+    "Milwaukee Bucks": "Fiserv Forum",
+    "Minnesota Timberwolves": "Target Center",
+    "New Orleans Pelicans": "Smoothie King Center",
+    "New York Knicks": "Madison Square Garden",
+    "Oklahoma City Thunder": "Paycom Center",
+    "Orlando Magic": "Kia Center",
+    "Philadelphia 76ers": "Wells Fargo Center",
+    "Phoenix Suns": "Footprint Center",
+    "Portland Trail Blazers": "Moda Center",
+    "Sacramento Kings": "Golden 1 Center",
+    "San Antonio Spurs": "Frost Bank Center",
+    "Toronto Raptors": "Scotiabank Arena",
+    "Utah Jazz": "Delta Center",
+    "Washington Wizards": "Capital One Arena"
+}
+
 
 class NBAApiScraper:
     """
@@ -185,6 +219,40 @@ class NBAApiScraper:
             logger.error(f"Error converting UTC time '{utc_str}' to EST: {str(e)}")
             return self._get_current_date()  # Default to current date as fallback
     
+    def _get_venue_info(self, game_data, home_team):
+        """
+        Extract venue information from game data with fallbacks.
+        
+        Args:
+            game_data: Game data dictionary from NBA API
+            home_team: Home team name for fallback venue lookup
+            
+        Returns:
+            Venue name string
+        """
+        # Try to get venue from arena object (primary method)
+        if 'arena' in game_data and isinstance(game_data['arena'], dict):
+            arena_name = game_data['arena'].get('arenaName')
+            if arena_name and arena_name.strip():
+                logger.info(f"Found venue from API: {arena_name}")
+                return arena_name
+        
+        # Fallback 1: Look in arenaName directly (some API endpoints structure)
+        arena_name = game_data.get('arenaName')
+        if arena_name and isinstance(arena_name, str) and arena_name.strip():
+            logger.info(f"Found venue from direct arenaName: {arena_name}")
+            return arena_name
+        
+        # Fallback 2: Use home team's usual venue
+        if home_team in TEAM_HOME_VENUES:
+            venue = TEAM_HOME_VENUES[home_team]
+            logger.info(f"Using home venue fallback for {home_team}: {venue}")
+            return venue
+        
+        # Final fallback
+        logger.warning(f"Could not determine venue for game with home team {home_team}")
+        return "TBD"
+    
     def scrape_nba_schedule(self, days_ahead=0, target_date=None):
         """
         Scrape NBA game schedule using the nba_api.
@@ -214,6 +282,10 @@ class NBAApiScraper:
             games_today = scoreboard.ScoreBoard()
             games_dict = games_today.get_dict()
             all_games = games_dict.get('scoreboard', {}).get('games', [])
+            
+            # Log the raw structure of the first game for debugging
+            if all_games:
+                logger.debug(f"First game structure: {all_games[0]}")
             
             # Format the game data for our database
             formatted_games = []
@@ -245,8 +317,8 @@ class NBAApiScraper:
                 except (IndexError, ValueError):
                     game_time = "19:00"  # Default to 7 PM as fallback
                 
-                # Get venue information
-                venue = game.get('arena', {}).get('arenaName', 'Unknown')
+                # Get venue information with improved extraction and fallbacks
+                venue = self._get_venue_info(game, home_team)
                 
                 # Generate a custom game ID using your format
                 custom_game_id = self._generate_game_id(home_team, away_team, game_date_str)
