@@ -1,4 +1,7 @@
 import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s · %(levelname)s · %(name)s · %(message)s")
+logger = logging.getLogger(__name__)
+
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Any
@@ -6,37 +9,27 @@ from nba_api.stats.library.http import NBAStatsHTTP
 
 
 from flask import Flask, jsonify, render_template, request
-
-# ────────────────────────────────────────────────────────────────────────────────
-#  Internal modules
-# ────────────────────────────────────────────────────────────────────────────────
-from data.database import Database
-from scrapers.game_scraper import NBAApiScraper  # pulls today's schedule
-from analysis.time_series import PlayerTimeSeriesAnalyzer
+from data.database import Database          # your DB wrapper
+from scrapers.game_scraper import NBAApiScraper
 from analysis.player_stats import PlayerStatsCollector
-
-# ────────────────────────────────────────────────────────────────────────────────
-#  Logging
-# ────────────────────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s · %(levelname)s · %(name)s · %(message)s",
-)
-logger = logging.getLogger("StatLemon.app")
-
-# ────────────────────────────────────────────────────────────────────────────────
-#  Flask app & core singletons
-# ────────────────────────────────────────────────────────────────────────────────
-
-# ────────────────────────────────────────────────────────────────────────────────
-#  Spoof browser headers once so Cloudflare lets stats endpoints through
-# ────────────────────────────────────────────────────────────────────────────────
-NBAStatsHTTP._HEADERS.update({
+from analysis.time_series import PlayerTimeSeriesAnalyzer
+# ── safe Cloudflare-bypass headers ──────────────────────────────────────────
+_BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Referer": "https://www.nba.com/",
     "Origin": "https://www.nba.com",
-})
+}
 
+# Detect or create headers dict attribute
+if hasattr(NBAStatsHTTP, "_HEADERS"):
+    target_headers = NBAStatsHTTP._HEADERS
+elif hasattr(NBAStatsHTTP, "HEADERS"):
+    target_headers = NBAStatsHTTP.HEADERS
+else:
+    target_headers = {}
+    NBAStatsHTTP._HEADERS = target_headers
+
+target_headers.update(_BROWSER_HEADERS)
 app = Flask(__name__)
 
 db = Database()

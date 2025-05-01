@@ -17,16 +17,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger('analysis.player_stats')
 
-# ────────────────────────────────────────────────────────────────────────────────
-#  ONE-TIME HEADER PATCH – mimic a real browser so Cloudflare lets us through
-# ────────────────────────────────────────────────────────────────────────────────
-NBAStatsHTTP._HEADERS.update({
+# ── safe Cloudflare-bypass headers ──────────────────────────────────────────
+_BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Referer": "https://www.nba.com/",
-    "Origin": "https://www.nba.com"
-})
+    "Origin": "https://www.nba.com",
+}
 
+# Detect or create headers dict attribute
+if hasattr(NBAStatsHTTP, "_HEADERS"):
+    target_headers = NBAStatsHTTP._HEADERS
+elif hasattr(NBAStatsHTTP, "HEADERS"):
+    target_headers = NBAStatsHTTP.HEADERS
+else:
+    target_headers = {}
+    NBAStatsHTTP._HEADERS = target_headers
 
+target_headers.update(_BROWSER_HEADERS)
 class PlayerStatsCollector:
     """
     Collects and processes historical player statistics using the NBA API.
