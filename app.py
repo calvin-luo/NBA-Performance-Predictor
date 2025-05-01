@@ -2,6 +2,8 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Any
+from nba_api.stats.library.http import NBAStatsHTTP
+
 
 from flask import Flask, jsonify, render_template, request
 
@@ -25,6 +27,16 @@ logger = logging.getLogger("StatLemon.app")
 # ────────────────────────────────────────────────────────────────────────────────
 #  Flask app & core singletons
 # ────────────────────────────────────────────────────────────────────────────────
+
+# ────────────────────────────────────────────────────────────────────────────────
+#  Spoof browser headers once so Cloudflare lets stats endpoints through
+# ────────────────────────────────────────────────────────────────────────────────
+NBAStatsHTTP._HEADERS.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Referer": "https://www.nba.com/",
+    "Origin": "https://www.nba.com",
+})
+
 app = Flask(__name__)
 
 db = Database()

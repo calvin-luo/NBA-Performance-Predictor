@@ -7,6 +7,7 @@ import re
 from typing import Dict, List, Any, Optional, Tuple
 from nba_api.stats.endpoints import playergamelog, playerdashboardbygeneralsplits, commonplayerinfo
 from nba_api.stats.static import players, teams
+from nba_api.stats.library.http import NBAStatsHTTP
 from fuzzywuzzy import process, fuzz
 
 # Set up logging
@@ -15,6 +16,15 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger('analysis.player_stats')
+
+# ────────────────────────────────────────────────────────────────────────────────
+#  ONE-TIME HEADER PATCH – mimic a real browser so Cloudflare lets us through
+# ────────────────────────────────────────────────────────────────────────────────
+NBAStatsHTTP._HEADERS.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Referer": "https://www.nba.com/",
+    "Origin": "https://www.nba.com"
+})
 
 
 class PlayerStatsCollector:

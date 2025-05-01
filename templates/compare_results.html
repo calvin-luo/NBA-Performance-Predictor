@@ -299,7 +299,7 @@
             }
         }).fail(function() {
             // Set default values in case of error
-            $(`#player${playerNum}-team-position`).text('Team not available');
+            $(`#player${playerNum}-team-position`).text('—');
         });
     }
     
@@ -307,12 +307,12 @@
     function updatePlayerTeamPosition(playerInfo, elementId) {
         if (playerInfo) {
             // Format: "Team Name | Position"
-            const teamName = playerInfo.team_name || 'Team not available';
+            const teamName = playerInfo.team_name || '—';
             const position = playerInfo.position || '';
             
             $(`#${elementId}`).text(`${teamName} | ${position}`);
         } else {
-            $(`#${elementId}`).text('Team not available');
+            $(`#${elementId}`).text('—');
         }
     }
     
