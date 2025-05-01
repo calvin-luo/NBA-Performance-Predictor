@@ -23,8 +23,8 @@
                 <i class="fas fa-user fa-5x text-secondary"></i>
             </div>
         </div>
-        <!-- API can be added to fetch actual player team and position -->
-        <h6 class="text-muted" id="player-team-position">NBA Player</h6>
+        <!-- Team and position text -->
+        <h6 class="text-muted" id="player-team-position">Loading...</h6>
     </div>
     <div class="col-md-9">
         <h1 class="display-4 fw-bold">{{ player_name }}</h1>
@@ -238,6 +238,7 @@
     let playerStats = [];
     let playerPrediction = {};
     let currentMetric = 'PTS_PER_MIN';
+    let playerInfo = null;
     
     // Charts
     let performanceRadarChart;
@@ -288,6 +289,9 @@
     function loadPlayerStats(forceRefresh = false) {
         const endpoint = `/api/player_stats/{{ player_name }}${forceRefresh ? '?refresh=true' : ''}`;
         
+        // Get player info first
+        fetchPlayerInfo();
+        
         $.getJSON(endpoint, function(data) {
             playerStats = data.stats;
             
@@ -309,6 +313,32 @@
         }).fail(function() {
             alert('Error loading player stats. Please try again.');
         });
+    }
+    
+    // Fetch player information including team and position
+    function fetchPlayerInfo() {
+        const endpoint = `/api/player_info/{{ player_name }}`;
+        
+        $.getJSON(endpoint, function(data) {
+            playerInfo = data.info;
+            updatePlayerTeamPosition();
+        }).fail(function() {
+            // Set default values in case of error
+            $('#player-team-position').text('Team not available');
+        });
+    }
+    
+    // Update player team and position display
+    function updatePlayerTeamPosition() {
+        if (playerInfo) {
+            // Format: "Team Name | Position"
+            const teamName = playerInfo.team_name || 'Team not available';
+            const position = playerInfo.position || '';
+            
+            $('#player-team-position').text(`${teamName} | ${position}`);
+        } else {
+            $('#player-team-position').text('Team not available');
+        }
     }
     
     // Load player prediction

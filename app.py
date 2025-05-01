@@ -191,6 +191,16 @@ def api_player_stats(player_name):
     
     return jsonify({"stats": stats})
 
+@app.route("/api/player_info/<player_name>")
+def api_player_info(player_name):
+    """Get player information including team and position."""
+    # Get player info from collector
+    player_info = player_stats.get_player_info(player_name)
+    
+    if player_info is None:
+        return jsonify({"error": f"No information found for {player_name}"}), 404
+    
+    return jsonify({"info": player_info})
 
 @app.route("/api/player_prediction/<player_name>")
 def api_player_prediction(player_name):

@@ -5,8 +5,8 @@ import time
 import random
 import re
 from typing import Dict, List, Any, Optional, Tuple
-from nba_api.stats.endpoints import playergamelog, playerdashboardbygeneralsplits
-from nba_api.stats.static import players
+from nba_api.stats.endpoints import playergamelog, playerdashboardbygeneralsplits, commonplayerinfo
+from nba_api.stats.static import players, teams
 from fuzzywuzzy import process, fuzz
 
 # Set up logging
@@ -46,6 +46,9 @@ class PlayerStatsCollector:
         'Robert Williams': 'Robert Williams III',
         'Lonnie Walker': 'Lonnie Walker IV'
     }
+    
+    # Cache for player details
+    player_details_cache = {}
     
     def __init__(self):
         """Initialize the PlayerStatsCollector."""
@@ -460,6 +463,63 @@ class PlayerStatsCollector:
             
         except Exception as e:
             logger.error(f"Error getting player ID for {player_name}: {str(e)}")
+            # Implement exponential backoff for failures
+            self.current_delay = min(self.max_delay, self.current_delay * 2)
+            return None
+    
+    def get_player_info(self, player_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get player information including team and position.
+        
+        Args:
+            player_name: Player's full or abbreviated name
+            
+        Returns:
+            Dictionary with player information or None if not found
+        """
+        # Check cache first
+        if player_name in self.player_details_cache:
+            return self.player_details_cache[player_name]
+        
+        # Get player ID
+        player_id = self.get_player_id(player_name)
+        if not player_id:
+            logger.warning(f"Could not find player ID for: {player_name}")
+            return None
+        
+        try:
+            # Fetch player info
+            self._wait_between_requests()
+            player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id)
+            info_df = player_info.get_data_frames()[0]
+            
+            if info_df.empty:
+                logger.warning(f"No player info found for: {player_name}")
+                return None
+            
+            # Extract relevant information
+            player_data = {
+                'player_id': player_id,
+                'full_name': info_df['DISPLAY_FIRST_LAST'].iloc[0] if 'DISPLAY_FIRST_LAST' in info_df.columns else player_name,
+                'team_id': info_df['TEAM_ID'].iloc[0] if 'TEAM_ID' in info_df.columns else None,
+                'team_name': info_df['TEAM_NAME'].iloc[0] if 'TEAM_NAME' in info_df.columns else None,
+                'team_abbreviation': info_df['TEAM_ABBREVIATION'].iloc[0] if 'TEAM_ABBREVIATION' in info_df.columns else None,
+                'position': info_df['POSITION'].iloc[0] if 'POSITION' in info_df.columns else None,
+                'height': info_df['HEIGHT'].iloc[0] if 'HEIGHT' in info_df.columns else None,
+                'weight': info_df['WEIGHT'].iloc[0] if 'WEIGHT' in info_df.columns else None,
+                'jersey': info_df['JERSEY'].iloc[0] if 'JERSEY' in info_df.columns else None,
+                'draft_year': info_df['DRAFT_YEAR'].iloc[0] if 'DRAFT_YEAR' in info_df.columns else None,
+                'experience': info_df['SEASON_EXP'].iloc[0] if 'SEASON_EXP' in info_df.columns else None
+            }
+            
+            # Cache the result
+            self.player_details_cache[player_name] = player_data
+            
+            logger.info(f"Successfully fetched info for {player_name}: {player_data['team_name']} ({player_data['position']})")
+            return player_data
+            
+        except Exception as e:
+            logger.error(f"Error getting player info for {player_name}: {str(e)}")
             # Implement exponential backoff for failures
             self.current_delay = min(self.max_delay, self.current_delay * 2)
             return None
