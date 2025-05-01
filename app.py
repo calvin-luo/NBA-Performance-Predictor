@@ -92,6 +92,12 @@ def compare_results():
 def lineup_builder():
     return render_template("lineup_builder.html")
 
+
+@app.route("/player/<player_name>")
+def player_detail(player_name):
+    """Player detail page that shows stats and predictions."""
+    return render_template("player.html", player_name=player_name)
+
 # ────────────────────────────────────────────────────────────────────────────────
 #  API routes
 # ────────────────────────────────────────────────────────────────────────────────

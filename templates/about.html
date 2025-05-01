@@ -2,4 +2,43 @@
 
 {% block title %}About Stat Lemon - NBA Performance Predictor{% endblock %}
 
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page">About</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mb-5">
+    <div class="col-lg-10 mx-auto">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">About Stat Lemon</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead">Stat Lemon is an NBA analytics sandbox that provides predictive insights for fantasy basketball players using SARIMA time series modeling.</p>
+                
+                <h5 class="mt-4">Our Methodology</h5>
+                <p>We use advanced time series analysis to identify patterns in player performance data and generate predictions for upcoming games. Our approach includes:</p>
+                <ul>
+                    <li>SARIMA (Seasonal AutoRegressive Integrated Moving Average) modeling</li>
+                    <li>Player-specific performance pattern analysis</li>
+                    <li>Advanced metrics beyond traditional box scores</li>
+                </ul>
+                
+                <h5 class="mt-4">Current Features</h5>
+                <ul>
+                    <li>Player performance forecasting</li>
+                    <li>Head-to-head player comparisons</li>
+                    <li>Lineup builder with team analysis</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

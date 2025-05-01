@@ -1,11 +1,6 @@
-import os
-import re
-import time
 import logging
 import datetime
 import pytz
-import requests
-from typing import List, Dict, Any, Optional, Tuple
 
 from nba_api.live.nba.endpoints import scoreboard
 from data.database import Database
@@ -272,7 +267,7 @@ class NBAApiScraper:
             if formatted_games:
                 logger.info(f"Scraped {len(formatted_games)} games from NBA API")
             else:
-                logger.warning(f"No games found in NBA API response. This could be due to an API limitation.")
+                logger.warning("No games found in NBA API response. This could be due to an API limitation.")
                 
             return formatted_games
             

@@ -1,12 +1,11 @@
 import logging
-import numpy as np
 import pandas as pd
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple
 import warnings
 
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.arima.model import ARIMA
-from statsmodels.tsa.stattools import adfuller, acf
+from statsmodels.tsa.stattools import adfuller
 
 # Set up logging
 logging.basicConfig(
@@ -25,10 +24,9 @@ class PlayerTimeSeriesAnalyzer:
     Makes predictions for upcoming games based on historical performance patterns.
     
     Key features:
-    - Automatic parameter selection for SARIMA models
+    - Uses fixed SARIMA parameters for consistent modeling
     - Handles seasonality in player performance
     - Computes confidence intervals for predictions
-    - Detects player-specific patterns and trends
     """
     
     def __init__(self, min_games: int = 10, max_games: int = 30):
@@ -42,12 +40,9 @@ class PlayerTimeSeriesAnalyzer:
         self.min_games = min_games
         self.max_games = max_games
         
-        # Default SARIMA parameters
-        self.default_order = (1, 1, 1)  # p, d, q (non-seasonal components)
-        self.default_seasonal_order = (1, 0, 1, 5)  # P, D, Q, S (seasonal components)
-        
-        # Track fitted models for each player and metric
-        self.fitted_models = {}
+        # Fixed SARIMA parameters - simplified from grid search
+        self.fixed_order = (1, 1, 1)         # p, d, q (non-seasonal components)
+        self.fixed_seasonal_order = (1, 0, 1, 5)  # P, D, Q, S (seasonal components)
         
         # Key metrics to analyze
         self.key_metrics = [
@@ -59,9 +54,6 @@ class PlayerTimeSeriesAnalyzer:
             'OFF_RATING',
             'DEF_RATING'
         ]
-        
-        # Dictionary to store model performance metrics
-        self.model_metrics = {}
         
         # Dictionary to track player averages for fallback predictions
         self.player_averages = {}
@@ -163,110 +155,12 @@ class PlayerTimeSeriesAnalyzer:
             logger.error(f"Error testing stationarity: {str(e)}")
             return False, 1.0, {'error': str(e)}
     
-    def auto_select_sarima_parameters(self, time_series: pd.Series, max_p: int = 3, max_d: int = 2, 
-                                    max_q: int = 3, max_P: int = 2, max_D: int = 1, 
-                                    max_Q: int = 2, max_s: int = 10) -> Tuple[Tuple, Tuple]:
+    def fit_sarima_model(self, time_series: pd.Series) -> Optional[Any]:
         """
-        Automatically select optimal SARIMA parameters using a grid search approach.
-        Uses a simplified approach for computational efficiency.
+        Fit a SARIMA model to the time series data using fixed parameters.
         
         Args:
             time_series: Time series data
-            max_p, max_d, max_q: Maximum values for non-seasonal parameters
-            max_P, max_D, max_Q, max_s: Maximum values for seasonal parameters
-            
-        Returns:
-            Tuple of (order, seasonal_order) with best parameters
-        """
-        # Check if we have enough data
-        if len(time_series) < self.min_games:
-            logger.warning(f"Not enough data for parameter selection (min {self.min_games} required)")
-            return self.default_order, self.default_seasonal_order
-        
-        try:
-            logger.info("Beginning automatic SARIMA parameter selection")
-            
-            # First, check stationarity and determine d
-            is_stationary, _, _ = self.check_stationarity(time_series)
-            d = 0 if is_stationary else 1
-            
-            # For computational efficiency, we'll use a smarter approach rather than a full grid search
-            # 1. First, determine seasonality period (s) by looking at autocorrelation
-            
-            # Calculate ACF
-            acf_values = acf(time_series.dropna(), nlags=min(max_s, len(time_series)//2))
-            
-            # Find local maxima in ACF (potential seasonal periods)
-            s_candidates = [i for i in range(2, len(acf_values)) 
-                         if i < max_s and acf_values[i] > acf_values[i-1] and acf_values[i] > acf_values[i+1] 
-                         and acf_values[i] > 0.2]
-            
-            # Default to 5 (approximately weekly for NBA schedule) if no strong candidates
-            s = 5 if not s_candidates else s_candidates[0]
-            
-            # 2. Start with sensible defaults for other parameters
-            best_order = (1, d, 1)
-            best_seasonal_order = (1, 0, 1, s)
-            best_aic = float('inf')
-            
-            # 3. Try a few promising parameter combinations
-            parameter_combinations = [
-                ((1, d, 1), (0, 0, 0, 0)),  # Simple ARIMA
-                ((1, d, 1), (1, 0, 1, s)),  # Basic SARIMA
-                ((2, d, 1), (1, 0, 1, s)),  # Increased AR
-                ((1, d, 2), (1, 0, 1, s)),  # Increased MA
-            ]
-            
-            # Add more combinations if we have enough data
-            if len(time_series) > 20:
-                parameter_combinations.extend([
-                    ((2, d, 2), (1, 0, 1, s)),
-                    ((1, d, 1), (2, 0, 1, s)),
-                    ((1, d, 1), (1, 0, 2, s))
-                ])
-            
-            # Try each combination
-            for order, seasonal_order in parameter_combinations:
-                try:
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
-                        
-                        # Fit model with current parameters
-                        model = SARIMAX(
-                            time_series.dropna(),
-                            order=order,
-                            seasonal_order=seasonal_order,
-                            enforce_stationarity=False,
-                            enforce_invertibility=False
-                        )
-                        result = model.fit(disp=False, maxiter=200)
-                        
-                        # Check if this is better (lower AIC)
-                        if result.aic < best_aic:
-                            best_aic = result.aic
-                            best_order = order
-                            best_seasonal_order = seasonal_order
-                            logger.info(f"Found better model: SARIMA{best_order}{best_seasonal_order} (AIC: {best_aic:.2f})")
-                
-                except Exception as e:
-                    logger.debug(f"Error fitting SARIMA{order}{seasonal_order}: {str(e)}")
-                    continue
-            
-            return best_order, best_seasonal_order
-            
-        except Exception as e:
-            logger.error(f"Error in parameter selection: {str(e)}")
-            return self.default_order, self.default_seasonal_order
-    
-    def fit_sarima_model(self, time_series: pd.Series, order: Tuple = None, 
-                       seasonal_order: Tuple = None) -> Optional[Any]:
-        """
-        Fit a SARIMA model to the time series data.
-        
-        Args:
-            time_series: Time series data
-            order: ARIMA order (p, d, q)
-            seasonal_order: Seasonal order (P, D, Q, s)
             
         Returns:
             Fitted SARIMA model or None if fitting fails
@@ -276,21 +170,17 @@ class PlayerTimeSeriesAnalyzer:
             logger.warning(f"Not enough data to fit SARIMA model (need {self.min_games}, got {len(time_series) if time_series is not None else 0})")
             return None
         
-        # Auto-select parameters if not provided
-        if order is None or seasonal_order is None:
-            order, seasonal_order = self.auto_select_sarima_parameters(time_series)
-        
-        logger.info(f"Fitting SARIMA model with order={order}, seasonal_order={seasonal_order}")
+        logger.info(f"Fitting SARIMA model with fixed parameters: order={self.fixed_order}, seasonal_order={self.fixed_seasonal_order}")
         
         try:
-            # Fit the SARIMA model
+            # Fit the SARIMA model with fixed parameters
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 
                 model = SARIMAX(
                     time_series.dropna(),
-                    order=order,
-                    seasonal_order=seasonal_order,
+                    order=self.fixed_order,
+                    seasonal_order=self.fixed_seasonal_order,
                     enforce_stationarity=False,
                     enforce_invertibility=False
                 )
@@ -418,20 +308,8 @@ class PlayerTimeSeriesAnalyzer:
                 
                 continue
             
-            # Generate a unique model key for this player and metric
-            model_key = f"{player_name}_{metric}"
-            
-            # Check if we already have a fitted model
-            if model_key in self.fitted_models:
-                model = self.fitted_models[model_key]
-                logger.info(f"Using existing model for {player_name} {metric}")
-            else:
-                # Fit a new model
-                model = self.fit_sarima_model(time_series)
-                
-                # Store the model if fitting was successful
-                if model is not None:
-                    self.fitted_models[model_key] = model
+            # Fit a model
+            model = self.fit_sarima_model(time_series)
             
             # Generate forecast if we have a model
             if model is not None:

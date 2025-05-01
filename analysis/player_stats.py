@@ -5,7 +5,7 @@ import time
 import random
 import re
 from typing import Dict, List, Any, Optional, Tuple
-from nba_api.stats.endpoints import playergamelog, playercareerstats, playerdashboardbygeneralsplits
+from nba_api.stats.endpoints import playergamelog, playerdashboardbygeneralsplits
 from nba_api.stats.static import players
 from fuzzywuzzy import process, fuzz
 
