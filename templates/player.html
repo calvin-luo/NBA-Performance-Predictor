@@ -230,22 +230,6 @@
         </div>
     </div>
 </div>
-
-<!-- Similar Players Section -->
-<div class="row">
-    <div class="col-md-12 mb-4">
-        <h4>Similar Players</h4>
-        <div class="row" id="similar-players">
-            <!-- Will be populated with similar players -->
-            <div class="col-12 text-center py-3">
-                <div class="spinner-border spinner-border-sm text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <span class="ms-2">Finding similar players...</span>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -322,9 +306,6 @@
             
             // Create trend chart
             createTrendChart();
-            
-            // Find similar players
-            findSimilarPlayers();
         }).fail(function() {
             alert('Error loading player stats. Please try again.');
         });
@@ -765,10 +746,13 @@
             
             const points = (game.PTS_PER_MIN * game.MINUTES_PLAYED).toFixed(0);
             
+            // Use the OPPONENT field if available, otherwise fall back to GAME_ID
+            const opponent = game.OPPONENT || "Unknown";
+            
             tableHtml += `
                 <tr>
                     <td>${gameDate}</td>
-                    <td>${game.GAME_ID}</td>
+                    <td>${opponent}</td>
                     <td>${game.MINUTES_PLAYED}</td>
                     <td>${(game.FG_PCT * 100).toFixed(1)}%</td>
                     <td>${points}</td>
@@ -779,46 +763,6 @@
         });
         
         $('#game-history').html(tableHtml);
-    }
-    
-    // Find similar players
-    function findSimilarPlayers() {
-        // This would normally be an API call to find similar players
-        // For demo purposes, we'll use placeholder data
-        
-        const placeholders = [
-            { name: "Kevin Durant", team: "Phoenix Suns", similarity: 92 },
-            { name: "Jayson Tatum", team: "Boston Celtics", similarity: 89 },
-            { name: "Kawhi Leonard", team: "Los Angeles Clippers", similarity: 87 },
-            { name: "Paul George", team: "Los Angeles Clippers", similarity: 85 }
-        ];
-        
-        let html = '';
-        
-        placeholders.forEach(player => {
-            html += `
-                <div class="col-md-3 col-sm-6 mb-3">
-                    <div class="card h-100">
-                        <div class="card-body text-center">
-                            <div class="mb-3">
-                                <div class="player-image-placeholder bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; margin: 0 auto;">
-                                    <i class="fas fa-user fa-2x text-secondary"></i>
-                                </div>
-                            </div>
-                            <h5 class="card-title">${player.name}</h5>
-                            <p class="card-text text-muted mb-2">${player.team}</p>
-                            <div class="progress mb-2" style="height: 5px;">
-                                <div class="progress-bar bg-success" role="progressbar" style="width: ${player.similarity}%"></div>
-                            </div>
-                            <p class="small text-muted">${player.similarity}% similar</p>
-                            <a href="/player/${encodeURIComponent(player.name)}" class="btn btn-sm btn-outline-primary">View Profile</a>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-        
-        $('#similar-players').html(html);
     }
 </script>
 {% endblock %}

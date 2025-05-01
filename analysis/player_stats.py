@@ -526,7 +526,25 @@ class PlayerStatsCollector:
             else:
                 # Take only requested number of games if we have enough
                 df = df.head(num_games)
+            
+            # Extract opponent information from MATCHUP column
+            if 'MATCHUP' in df.columns:
+                # The MATCHUP column has format like "DAL vs LAL" or "DAL @ LAL" 
+                # Split on spaces and take the last part for opponent abbreviation
+                df['OPP_TEAM'] = df['MATCHUP'].str.split().str[-1]
                 
+                # Add information about home/away
+                df['IS_HOME'] = df['MATCHUP'].str.contains(' vs ')
+                
+                # Create a formatted opponent string
+                df['OPPONENT'] = df.apply(
+                    lambda row: f"vs {row['OPP_TEAM']}" if row['IS_HOME'] else f"@ {row['OPP_TEAM']}", 
+                    axis=1
+                )
+            else:
+                # Fallback if MATCHUP column isn't available
+                df['OPPONENT'] = "Unknown"
+            
             return df
             
         except Exception as e:
@@ -787,7 +805,7 @@ class PlayerStatsCollector:
         if player_stats is not None:
             # Define columns to keep for time series analysis
             ts_columns = [
-                'GAME_DATE', 'GAME_ID',  # Identifiers
+                'GAME_DATE', 'GAME_ID', 'OPPONENT',  # Identifiers
                 'FG_PCT', 'TS_PCT', 'PTS_PER_MIN',  # Efficiency metrics
                 'PLUS_MINUS', 'OFF_RATING', 'DEF_RATING', 'GAME_SCORE',  # Impact metrics
                 'USG_RATE', 'MINUTES_PLAYED', 'AST_TO_RATIO'  # Usage metrics
