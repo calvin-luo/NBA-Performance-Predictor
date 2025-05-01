@@ -205,7 +205,7 @@ def api_player_info(player_name):
     if player_info is None:
         return jsonify({"error": f"No information found for {player_name}"}), 404
     
-    return jsonify({"info": player_info})
+    return jsonify(player_info), 200
 
 @app.route("/api/player_prediction/<player_name>")
 def api_player_prediction(player_name):
