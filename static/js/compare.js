@@ -332,7 +332,6 @@ function createCategoryChart(category, canvasId) {
     });
 }
 
-// Update prediction table
 function updatePredictionTable() {
     if (!player1Prediction || !player2Prediction) {
         return;
@@ -340,16 +339,55 @@ function updatePredictionTable() {
     
     // Define metrics to display
     const metrics = [
+        // Core metrics
         { key: 'PTS_PER_MIN', label: 'Points Per 36 Min', formatter: (val) => (val * 36).toFixed(1), multiplier: 36 },
         { key: 'FG_PCT', label: 'Field Goal %', formatter: (val) => (val * 100).toFixed(1) + '%', multiplier: 100 },
         { key: 'TS_PCT', label: 'True Shooting %', formatter: (val) => (val * 100).toFixed(1) + '%', multiplier: 100 },
         { key: 'PLUS_MINUS', label: 'Plus/Minus', formatter: (val) => val.toFixed(1), multiplier: 1 },
-        { key: 'GAME_SCORE', label: 'Game Score', formatter: (val) => val.toFixed(1), multiplier: 1 }
+        { key: 'GAME_SCORE', label: 'Game Score', formatter: (val) => val.toFixed(1), multiplier: 1 },
+        
+        // Minutes prediction
+        { key: 'MIN', label: 'Minutes', formatter: (val) => val.toFixed(1), multiplier: 1 },
+        
+        // Fantasy metrics
+        { key: 'THREES', label: '3-Pointers', formatter: (val) => val.toFixed(1), multiplier: 1 },
+        { key: 'TWOS', label: '2-Pointers', formatter: (val) => val.toFixed(1), multiplier: 1 },
+        { key: 'FTM', label: 'Free Throws', formatter: (val) => val.toFixed(1), multiplier: 1 },
+        { key: 'REB', label: 'Rebounds', formatter: (val) => val.toFixed(1), multiplier: 1 },
+        { key: 'AST', label: 'Assists', formatter: (val) => val.toFixed(1), multiplier: 1 },
+        { key: 'BLK', label: 'Blocks', formatter: (val) => val.toFixed(1), multiplier: 1 },
+        { key: 'STL', label: 'Steals', formatter: (val) => val.toFixed(1), multiplier: 1 },
+        { key: 'TOV', label: 'Turnovers', formatter: (val) => val.toFixed(1), multiplier: 1 }
     ];
     
     let tableHtml = '';
     
-    metrics.forEach(metric => {
+    // Create header section for core metrics
+    tableHtml += '<tr class="table-light"><th colspan="4">Core Metrics</th></tr>';
+    
+    // Add core metrics (first 5)
+    for (let i = 0; i < 5; i++) {
+        const metric = metrics[i];
+        addMetricRow(metric);
+    }
+    
+    // Create header for minutes prediction
+    tableHtml += '<tr class="table-light"><th colspan="4">Minutes Projection</th></tr>';
+    
+    // Add minutes prediction
+    addMetricRow(metrics[5]);
+    
+    // Create header for fantasy metrics
+    tableHtml += '<tr class="table-light"><th colspan="4">Fantasy Metrics</th></tr>';
+    
+    // Add fantasy metrics (last 8)
+    for (let i = 6; i < metrics.length; i++) {
+        const metric = metrics[i];
+        addMetricRow(metric);
+    }
+    
+    // Helper function to add a metric row
+    function addMetricRow(metric) {
         // Check if we have predictions for this metric for both players
         const player1Has = player1Prediction && player1Prediction[metric.key];
         const player2Has = player2Prediction && player2Prediction[metric.key];
@@ -364,10 +402,13 @@ function updatePredictionTable() {
             let player2Class = '';
             let diffHtml = '';
             
-            if (diff > 0) {
+            // For TOV (turnovers), lower is better
+            const isTOV = metric.key === 'TOV';
+            
+            if ((diff > 0 && !isTOV) || (diff < 0 && isTOV)) {
                 player1Class = 'text-success fw-bold';
                 diffHtml = `<span class="text-success">+${Math.abs(diff).toFixed(1)}</span>`;
-            } else if (diff < 0) {
+            } else if ((diff < 0 && !isTOV) || (diff > 0 && isTOV)) {
                 player2Class = 'text-success fw-bold';
                 diffHtml = `<span class="text-success">+${Math.abs(diff).toFixed(1)}</span>`;
             } else {
@@ -383,7 +424,7 @@ function updatePredictionTable() {
                 </tr>
             `;
         }
-    });
+    }
     
     if (tableHtml === '') {
         tableHtml = `

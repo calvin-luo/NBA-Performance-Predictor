@@ -55,6 +55,10 @@ class PlayerTimeSeriesAnalyzer:
         # Key metrics to analyze - now using KEY_METRICS from constants
         self.key_metrics = KEY_METRICS
         
+        # Add MIN if it's not already in the key metrics
+        if 'MIN' not in self.key_metrics:
+            self.key_metrics.append('MIN')
+        
         # Dictionary to track player averages for fallback predictions
         self.player_averages = {}
     
@@ -282,81 +286,82 @@ class PlayerTimeSeriesAnalyzer:
         # Dictionary to store forecast results
         forecast_dict = {}
         
-        # Process each metric
+        # Prioritize forecasting fantasy metrics and minutes
+        priority_metrics = ['MIN'] + CATEGORIES['fantasy']
+        
+        # First process priority metrics (Minutes and Fantasy categories)
+        for metric in priority_metrics:
+            self._forecast_metric(metric, time_series_dict, player_averages, forecast_dict)
+        
+        # Then process remaining metrics
         for metric in self.key_metrics:
-            if metric not in time_series_dict:
-                logger.warning(f"Metric {metric} not available for {player_name}")
-                continue
-            
-            time_series = time_series_dict[metric]
-            
-            # Skip if not enough data
-            if len(time_series) < self.min_games:
-                logger.warning(f"Not enough data for {player_name} {metric} (need {self.min_games}, got {len(time_series)})")
+            if metric not in priority_metrics:
+                self._forecast_metric(metric, time_series_dict, player_averages, forecast_dict)
+        
+        return forecast_dict
+    
+    def _forecast_metric(self, metric, time_series_dict, player_averages, forecast_dict):
+        """Helper method to forecast a single metric and add it to the forecast dictionary"""
+        if metric not in time_series_dict:
+            if metric in player_averages:
+                # Use player average as fallback if time series not available
+                avg_value = player_averages[metric]
+                forecast_dict[metric] = {
+                    'forecast': avg_value,
+                    'lower_bound': avg_value * 0.85,  # Simple confidence interval
+                    'upper_bound': avg_value * 1.15,
+                    'method': 'average',
+                    'confidence': 'low'
+                }
+            return
+        
+        time_series = time_series_dict[metric]
+        
+        # Skip if not enough data
+        if len(time_series) < self.min_games:
+            # Use player average as fallback if available
+            if metric in player_averages:
+                avg_value = player_averages[metric]
+                forecast_dict[metric] = {
+                    'forecast': avg_value,
+                    'lower_bound': avg_value * 0.85,  # Simple confidence interval
+                    'upper_bound': avg_value * 1.15,
+                    'method': 'average',
+                    'confidence': 'low'
+                }
+            return
+        
+        # Fit a model
+        model = self.fit_sarima_model(time_series)
+        
+        # Generate forecast if we have a model
+        if model is not None:
+            try:
+                # Get forecast with confidence intervals
+                forecast_result = model.get_forecast(steps=1)
+                predicted_mean = forecast_result.predicted_mean.values
+                confidence_intervals = forecast_result.conf_int()
                 
-                # Use player average as fallback if available
+                # Get the forecast for the next game
+                forecast_value = predicted_mean[0]
+                lower_bound = confidence_intervals.iloc[0, 0]
+                upper_bound = confidence_intervals.iloc[0, 1]
+                
+                # Store forecast results
+                forecast_dict[metric] = {
+                    'forecast': forecast_value,
+                    'lower_bound': lower_bound,
+                    'upper_bound': upper_bound,
+                    'method': 'sarima',
+                    'confidence': 'high'
+                }
+                
+                logger.info(f"SARIMA forecast for {metric}: {forecast_value:.3f} [{lower_bound:.3f}, {upper_bound:.3f}]")
+            except Exception as e:
+                logger.error(f"Error generating forecast for {metric}: {str(e)}")
+                # Use player average as fallback
                 if metric in player_averages:
                     avg_value = player_averages[metric]
-                    
-                    forecast_dict[metric] = {
-                        'forecast': avg_value,
-                        'lower_bound': avg_value * 0.85,  # Simple confidence interval
-                        'upper_bound': avg_value * 1.15,
-                        'method': 'average',
-                        'confidence': 'low'
-                    }
-                
-                continue
-            
-            # Fit a model
-            model = self.fit_sarima_model(time_series)
-            
-            # Generate forecast if we have a model
-            if model is not None:
-                try:
-                    # Get forecast with confidence intervals
-                    forecast_result = model.get_forecast(steps=num_forecast)
-                    predicted_mean = forecast_result.predicted_mean.values
-                    confidence_intervals = forecast_result.conf_int()
-                    
-                    # Get the forecast for the next game
-                    forecast_value = predicted_mean[0]
-                    lower_bound = confidence_intervals.iloc[0, 0]
-                    upper_bound = confidence_intervals.iloc[0, 1]
-                    
-                    # Store forecast results
-                    forecast_dict[metric] = {
-                        'forecast': forecast_value,
-                        'lower_bound': lower_bound,
-                        'upper_bound': upper_bound,
-                        'method': 'sarima',
-                        'confidence': 'high'
-                    }
-                    
-                    logger.info(f"SARIMA forecast for {player_name} {metric}: {forecast_value:.3f} [{lower_bound:.3f}, {upper_bound:.3f}]")
-                    
-                except Exception as e:
-                    logger.error(f"Error generating forecast for {player_name} {metric}: {str(e)}")
-                    
-                    # Use player average as fallback
-                    if metric in player_averages:
-                        avg_value = player_averages[metric]
-                        
-                        forecast_dict[metric] = {
-                            'forecast': avg_value,
-                            'lower_bound': avg_value * 0.85,
-                            'upper_bound': avg_value * 1.15,
-                            'method': 'average',
-                            'confidence': 'low'
-                        }
-                        
-                        logger.info(f"Using average for {player_name} {metric}: {avg_value:.3f}")
-            
-            else:
-                # Use player average as fallback if model fitting failed
-                if metric in player_averages:
-                    avg_value = player_averages[metric]
-                    
                     forecast_dict[metric] = {
                         'forecast': avg_value,
                         'lower_bound': avg_value * 0.85,
@@ -364,8 +369,14 @@ class PlayerTimeSeriesAnalyzer:
                         'method': 'average',
                         'confidence': 'low'
                     }
-                    
-                    logger.info(f"Using average for {player_name} {metric}: {avg_value:.3f}")
-        
-        # Return the forecast dictionary directly for backward compatibility
-        return forecast_dict
+        else:
+            # Use player average as fallback if model fitting failed
+            if metric in player_averages:
+                avg_value = player_averages[metric]
+                forecast_dict[metric] = {
+                    'forecast': avg_value,
+                    'lower_bound': avg_value * 0.85,
+                    'upper_bound': avg_value * 1.15,
+                    'method': 'average',
+                    'confidence': 'low'
+                }

@@ -519,53 +519,82 @@
         
         let tableHtml = '';
         
-        // Define metrics to display and their labels
-        const metricsToDisplay = {
-            'PTS_PER_MIN': 'Points (per 36)',
-            'FG_PCT': 'FG%',
-            'TS_PCT': 'TS%',
-            'PLUS_MINUS': 'Plus/Minus',
-            'GAME_SCORE': 'Game Score',
-            'THREES': '3-Pointers',
-            'REB': 'Rebounds',
-            'AST': 'Assists',
-            'STL': 'Steals',
-            'BLK': 'Blocks',
-            'TOV': 'Turnovers'
-        };
-        
-        for (const [metric, label] of Object.entries(metricsToDisplay)) {
-            if (playerPrediction[metric]) {
-                const forecast = playerPrediction[metric].forecast;
-                const lower = playerPrediction[metric].lower_bound;
-                const upper = playerPrediction[metric].upper_bound;
-                
-                // Format values based on metric
-                let formattedForecast, formattedRange;
-                
-                if (metric === 'PTS_PER_MIN') {
-                    // Convert to points per 36 minutes
-                    formattedForecast = (forecast * 36).toFixed(1);
-                    formattedRange = `${(lower * 36).toFixed(1)} - ${(upper * 36).toFixed(1)}`;
-                } else if (metric === 'FG_PCT' || metric === 'TS_PCT' || metric === 'THREE_PCT') {
-                    // Convert to percentage
-                    formattedForecast = (forecast * 100).toFixed(1) + '%';
-                    formattedRange = `${(lower * 100).toFixed(1)}% - ${(upper * 100).toFixed(1)}%`;
-                } else {
-                    // Other metrics
-                    formattedForecast = forecast.toFixed(1);
-                    formattedRange = `${lower.toFixed(1)} - ${upper.toFixed(1)}`;
+        // Define metrics to display and their labels with grouping
+        const metricsGroups = [
+            {
+                title: 'Core Metrics',
+                metrics: {
+                    'PTS_PER_MIN': 'Points (per 36)',
+                    'FG_PCT': 'FG%',
+                    'TS_PCT': 'TS%',
+                    'PLUS_MINUS': 'Plus/Minus',
+                    'GAME_SCORE': 'Game Score'
                 }
-                
-                tableHtml += `
-                    <tr>
-                        <td>${label}</td>
-                        <td class="fw-bold">${formattedForecast}</td>
-                        <td>${formattedRange}</td>
-                    </tr>
-                `;
+            },
+            {
+                title: 'Minutes Projection',
+                metrics: {
+                    'MIN': 'Minutes'
+                }
+            },
+            {
+                title: 'Fantasy Metrics',
+                metrics: {
+                    'THREES': '3-Pointers',
+                    'TWOS': '2-Pointers',
+                    'FTM': 'Free Throws',
+                    'REB': 'Rebounds',
+                    'AST': 'Assists',
+                    'BLK': 'Blocks',
+                    'STL': 'Steals',
+                    'TOV': 'Turnovers'
+                }
             }
-        }
+        ];
+        
+        // Process each group of metrics
+        metricsGroups.forEach(group => {
+            // Add group header
+            tableHtml += `
+                <tr class="table-light">
+                    <th colspan="3">${group.title}</th>
+                </tr>
+            `;
+            
+            // Add metrics in this group
+            for (const [metric, label] of Object.entries(group.metrics)) {
+                if (playerPrediction[metric]) {
+                    const forecast = playerPrediction[metric].forecast;
+                    const lower = playerPrediction[metric].lower_bound;
+                    const upper = playerPrediction[metric].upper_bound;
+                    
+                    // Format values based on metric
+                    let formattedForecast, formattedRange;
+                    
+                    if (metric === 'PTS_PER_MIN') {
+                        // Convert to points per 36 minutes
+                        formattedForecast = (forecast * 36).toFixed(1);
+                        formattedRange = `${(lower * 36).toFixed(1)} - ${(upper * 36).toFixed(1)}`;
+                    } else if (metric === 'FG_PCT' || metric === 'TS_PCT' || metric === 'THREE_PCT') {
+                        // Convert to percentage
+                        formattedForecast = (forecast * 100).toFixed(1) + '%';
+                        formattedRange = `${(lower * 100).toFixed(1)}% - ${(upper * 100).toFixed(1)}%`;
+                    } else {
+                        // Other metrics
+                        formattedForecast = forecast.toFixed(1);
+                        formattedRange = `${lower.toFixed(1)} - ${upper.toFixed(1)}`;
+                    }
+                    
+                    tableHtml += `
+                        <tr>
+                            <td>${label}</td>
+                            <td class="fw-bold">${formattedForecast}</td>
+                            <td>${formattedRange}</td>
+                        </tr>
+                    `;
+                }
+            }
+        });
         
         if (tableHtml === '') {
             tableHtml = `
@@ -579,7 +608,6 @@
         
         $('#prediction-table').html(tableHtml);
     }
-    
     // Create trend chart
     function createTrendChart() {
         const ctx = document.getElementById('trendChart').getContext('2d');
