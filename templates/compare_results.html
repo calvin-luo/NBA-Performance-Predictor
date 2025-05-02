@@ -96,22 +96,29 @@
             <div class="card-header">
                 <ul class="nav nav-tabs card-header-tabs" id="metricTabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="scoring-tab" data-bs-toggle="tab" data-bs-target="#scoring" type="button" role="tab" aria-controls="scoring" aria-selected="true">Scoring</button>
+                        <button class="nav-link active" id="fantasy-tab" data-bs-toggle="tab" data-bs-target="#fantasy" type="button" role="tab" aria-controls="fantasy" aria-selected="true">Fantasy</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="volume-tab" data-bs-toggle="tab" data-bs-target="#volume" type="button" role="tab" aria-controls="volume" aria-selected="false">Volume</button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="efficiency-tab" data-bs-toggle="tab" data-bs-target="#efficiency" type="button" role="tab" aria-controls="efficiency" aria-selected="false">Efficiency</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="impact-tab" data-bs-toggle="tab" data-bs-target="#impact" type="button" role="tab" aria-controls="impact" aria-selected="false">Impact</button>
                     </li>
                 </ul>
             </div>
             <div class="card-body">
                 <div class="tab-content" id="metricTabsContent">
-                    <div class="tab-pane fade show active" id="scoring" role="tabpanel" aria-labelledby="scoring-tab">
+                    <div class="tab-pane fade show active" id="fantasy" role="tabpanel" aria-labelledby="fantasy-tab">
                         <div class="row">
                             <div class="col-md-12">
-                                <canvas id="scoringChart" width="800" height="400"></canvas>
+                                <canvas id="fantasyChart" width="800" height="400"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="volume" role="tabpanel" aria-labelledby="volume-tab">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <canvas id="volumeChart" width="800" height="400"></canvas>
                             </div>
                         </div>
                     </div>
@@ -119,13 +126,6 @@
                         <div class="row">
                             <div class="col-md-12">
                                 <canvas id="efficiencyChart" width="800" height="400"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="tab-pane fade" id="impact" role="tabpanel" aria-labelledby="impact-tab">
-                        <div class="row">
-                            <div class="col-md-12">
-                                <canvas id="impactChart" width="800" height="400"></canvas>
                             </div>
                         </div>
                     </div>
@@ -229,15 +229,22 @@
     let player2Info = null;
     let currentMetric = 'GAME_SCORE';
     
-    // Charts
-    let radarChart;
-    let scoringChart;
-    let efficiencyChart;
-    let impactChart;
-    let recentGamesChart;
+    // Chart objects
+    let radarChart = null;
+    let fantasyChart = null;
+    let volumeChart = null;
+    let efficiencyChart = null;
+    let recentGamesChart = null;
+    
+    // Define categories
+    const CATEGORIES = {
+        "fantasy": ["THREES", "TWOS", "FTM", "REB", "AST", "BLK", "STL", "TOV"],
+        "volume": ["MIN", "FGM", "FGA"],
+        "efficiency": ["FG_PCT", "TS_PCT", "TOV", "THREE_PCT"]
+    };
     
     $(document).ready(function() {
-        // Load player stats and predictions
+        // Load player data
         loadPlayerData();
         
         // Handle metric selection for recent games chart
@@ -269,8 +276,8 @@
                 // Create radar chart
                 createRadarChart();
                 
-                // Create metric charts
-                createMetricCharts();
+                // Create category charts
+                createCategoryCharts();
                 
                 // Create recent games chart
                 createRecentGamesChart();
@@ -337,10 +344,10 @@
     }
     
     // Calculate average for a specific metric
-    function calculateAverage(stats, metric) {
-        if (!stats || stats.length === 0) return 0;
+    function calculateAverage(playerStats, metric) {
+        if (!playerStats || playerStats.length === 0) return 0;
         
-        const values = stats.map(game => parseFloat(game[metric])).filter(val => !isNaN(val));
+        const values = playerStats.map(game => parseFloat(game[metric])).filter(val => !isNaN(val));
         return values.reduce((sum, val) => sum + val, 0) / values.length;
     }
     
@@ -406,9 +413,9 @@
         // Calculate normalized values for radar chart (0 to 100 scale)
         const player1Data = [
             calculateAverage(player1Stats, 'PTS_PER_MIN') * 30, // Scale points per min
-            calculateAverage(player1Stats, 'TS_PCT') * 100, // True shooting percentage
+            calculateAverage(player1Stats, 'TS_PCT') * 100,     // True shooting percentage
             (calculateAverage(player1Stats, 'PLUS_MINUS') + 10) * 5, // Normalize plus/minus
-            calculateAverage(player1Stats, 'GAME_SCORE') * 4, // Game score
+            calculateAverage(player1Stats, 'GAME_SCORE') * 4,   // Game score
             Math.min(calculateAverage(player1Stats, 'AST_TO_RATIO') * 10, 100) // Assist to turnover ratio
         ];
         
@@ -472,209 +479,56 @@
         });
     }
     
-    // Create metric charts
-    function createMetricCharts() {
+    // Create category charts
+    function createCategoryCharts() {
         if (!player1Stats || !player2Stats) {
             return;
         }
         
-        // Create scoring chart
-        createScoringChart();
-        
-        // Create efficiency chart
-        createEfficiencyChart();
-        
-        // Create impact chart
-        createImpactChart();
+        // Create charts for each category
+        createCategoryChart('fantasy', 'fantasyChart');
+        createCategoryChart('volume', 'volumeChart');
+        createCategoryChart('efficiency', 'efficiencyChart');
     }
     
-    // Create scoring chart
-    function createScoringChart() {
-        const ctx = document.getElementById('scoringChart').getContext('2d');
+    // Create a chart for a specific category
+    function createCategoryChart(category, canvasId) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
         
-        // Get recent 10 games for both players
-        const player1Games = player1Stats.slice(0, 10).reverse();
-        const player2Games = player2Stats.slice(0, 10).reverse();
+        // Get metrics for this category
+        const metrics = CATEGORIES[category];
         
-        // Calculate points per game (points per min * minutes)
-        const player1Points = player1Games.map(game => game.PTS_PER_MIN * game.MINUTES_PLAYED);
-        const player2Points = player2Games.map(game => game.PTS_PER_MIN * game.MINUTES_PLAYED);
+        // Calculate averages for each player
+        const player1Avgs = metrics.map(metric => calculateAverage(player1Stats, metric));
+        const player2Avgs = metrics.map(metric => calculateAverage(player2Stats, metric));
         
-        // Labels (Game 1, Game 2, etc.)
-        const labels = Array.from({ length: 10 }, (_, i) => `Game ${i + 1}`);
+        // Format labels for display
+        const labels = metrics.map(getMetricLabel);
         
-        if (scoringChart) {
-            scoringChart.destroy();
+        // Destroy existing chart if exists
+        if (window[canvasId + 'Chart']) {
+            window[canvasId + 'Chart'].destroy();
         }
         
-        scoringChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: '{{ player1 }}',
-                        data: player1Points,
-                        borderColor: 'rgb(54, 162, 235)',
-                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                        tension: 0.1
-                    },
-                    {
-                        label: '{{ player2 }}',
-                        data: player2Points,
-                        borderColor: 'rgb(255, 99, 132)',
-                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
-                        tension: 0.1
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Points Scored (Last 10 Games)'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'Points'
-                        }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Recent Games'
-                        }
-                    }
-                }
-            }
-        });
-    }
-    
-    // Create efficiency chart
-    function createEfficiencyChart() {
-        const ctx = document.getElementById('efficiencyChart').getContext('2d');
-        
-        // Get field goal and true shooting percentages for both players
-        const player1FGPct = player1Stats.slice(0, 10).reverse().map(game => game.FG_PCT * 100);
-        const player1TSPct = player1Stats.slice(0, 10).reverse().map(game => game.TS_PCT * 100);
-        
-        const player2FGPct = player2Stats.slice(0, 10).reverse().map(game => game.FG_PCT * 100);
-        const player2TSPct = player2Stats.slice(0, 10).reverse().map(game => game.TS_PCT * 100);
-        
-        // Labels (Game 1, Game 2, etc.)
-        const labels = Array.from({ length: 10 }, (_, i) => `Game ${i + 1}`);
-        
-        if (efficiencyChart) {
-            efficiencyChart.destroy();
-        }
-        
-        efficiencyChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: `{{ player1 }} (FG%)`,
-                        data: player1FGPct,
-                        borderColor: 'rgb(54, 162, 235)',
-                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                        borderDash: [],
-                        tension: 0.1
-                    },
-                    {
-                        label: `{{ player1 }} (TS%)`,
-                        data: player1TSPct,
-                        borderColor: 'rgb(54, 162, 235)',
-                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                        borderDash: [5, 5],
-                        tension: 0.1
-                    },
-                    {
-                        label: `{{ player2 }} (FG%)`,
-                        data: player2FGPct,
-                        borderColor: 'rgb(255, 99, 132)',
-                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
-                        borderDash: [],
-                        tension: 0.1
-                    },
-                    {
-                        label: `{{ player2 }} (TS%)`,
-                        data: player2TSPct,
-                        borderColor: 'rgb(255, 99, 132)',
-                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
-                        borderDash: [5, 5],
-                        tension: 0.1
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Shooting Efficiency (Last 10 Games)'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'Percentage'
-                        }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Recent Games'
-                        }
-                    }
-                }
-            }
-        });
-    }
-    
-    // Create impact chart
-    function createImpactChart() {
-        const ctx = document.getElementById('impactChart').getContext('2d');
-        
-        // Get plus/minus and game score for both players
-        const player1PlusMinus = player1Stats.slice(0, 10).reverse().map(game => game.PLUS_MINUS);
-        const player1GameScore = player1Stats.slice(0, 10).reverse().map(game => game.GAME_SCORE);
-        
-        const player2PlusMinus = player2Stats.slice(0, 10).reverse().map(game => game.PLUS_MINUS);
-        const player2GameScore = player2Stats.slice(0, 10).reverse().map(game => game.GAME_SCORE);
-        
-        // Calculate averages for both metrics
-        const avgPlayer1PlusMinus = player1PlusMinus.reduce((sum, val) => sum + val, 0) / player1PlusMinus.length;
-        const avgPlayer2PlusMinus = player2PlusMinus.reduce((sum, val) => sum + val, 0) / player2PlusMinus.length;
-        
-        const avgPlayer1GameScore = player1GameScore.reduce((sum, val) => sum + val, 0) / player1GameScore.length;
-        const avgPlayer2GameScore = player2GameScore.reduce((sum, val) => sum + val, 0) / player2GameScore.length;
-        
-        if (impactChart) {
-            impactChart.destroy();
-        }
-        
-        impactChart = new Chart(ctx, {
+        // Create new chart
+        window[canvasId + 'Chart'] = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: ['Plus/Minus', 'Game Score'],
+                labels: labels,
                 datasets: [
                     {
                         label: '{{ player1 }}',
-                        data: [avgPlayer1PlusMinus, avgPlayer1GameScore],
-                        backgroundColor: 'rgba(54, 162, 235, 0.7)'
+                        data: player1Avgs,
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                        borderColor: 'rgb(54, 162, 235)',
+                        borderWidth: 1
                     },
                     {
                         label: '{{ player2 }}',
-                        data: [avgPlayer2PlusMinus, avgPlayer2GameScore],
-                        backgroundColor: 'rgba(255, 99, 132, 0.7)'
+                        data: player2Avgs,
+                        backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                        borderColor: 'rgb(255, 99, 132)',
+                        borderWidth: 1
                     }
                 ]
             },
@@ -683,16 +537,12 @@
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Average Impact Metrics'
+                        text: category.charAt(0).toUpperCase() + category.slice(1) + ' Metrics'
                     }
                 },
                 scales: {
                     y: {
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'Value'
-                        }
+                        beginAtZero: false
                     }
                 }
             }
@@ -717,9 +567,13 @@
         let tableHtml = '';
         
         metrics.forEach(metric => {
-            if (player1Prediction[metric.key] && player2Prediction[metric.key]) {
-                const player1Val = player1Prediction[metric.key].forecast;
-                const player2Val = player2Prediction[metric.key].forecast;
+            // Check if we have predictions for this metric for both players
+            const player1Has = player1Prediction.flat && player1Prediction.flat[metric.key];
+            const player2Has = player2Prediction.flat && player2Prediction.flat[metric.key];
+            
+            if (player1Has && player2Has) {
+                const player1Val = player1Prediction.flat[metric.key].forecast;
+                const player2Val = player2Prediction.flat[metric.key].forecast;
                 const diff = (player1Val - player2Val) * metric.multiplier;
                 
                 // Determine which player is better for this metric
@@ -880,6 +734,35 @@
         };
         
         return titles[currentMetric] || `${currentMetric} (Last 10 Games)`;
+    }
+    
+    // Get a metric label for display
+    function getMetricLabel(metric) {
+        const labels = {
+            'PTS_PER_MIN': 'Points Per Min',
+            'FG_PCT': 'Field Goal %',
+            'TS_PCT': 'True Shooting %',
+            'PLUS_MINUS': 'Plus/Minus',
+            'GAME_SCORE': 'Game Score',
+            'OFF_RATING': 'Offensive Rating',
+            'DEF_RATING': 'Defensive Rating',
+            'AST_TO_RATIO': 'Assist/TO Ratio',
+            'MINUTES_PLAYED': 'Minutes',
+            'THREES': '3-Pointers',
+            'TWOS': '2-Pointers',
+            'FTM': 'Free Throws',
+            'REB': 'Rebounds',
+            'AST': 'Assists',
+            'BLK': 'Blocks',
+            'STL': 'Steals',
+            'TOV': 'Turnovers',
+            'MIN': 'Minutes',
+            'FGM': 'Field Goals Made',
+            'FGA': 'Field Goals Att.',
+            'THREE_PCT': '3PT %'
+        };
+        
+        return labels[metric] || metric;
     }
 </script>
 {% endblock %}

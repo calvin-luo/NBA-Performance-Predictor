@@ -12,7 +12,7 @@ from flask import Flask, jsonify, render_template, request
 from data.database import Database          # your DB wrapper
 from scrapers.game_scraper import NBAApiScraper
 from analysis.player_stats import PlayerStatsCollector
-from analysis.time_series import PlayerTimeSeriesAnalyzer
+from analysis.time_series import PlayerTimeSeriesAnalyzer, KEY_METRICS, CATEGORIES
 # ── safe Cloudflare-bypass headers ──────────────────────────────────────────
 _BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -210,6 +210,14 @@ def api_player_info(player_name):
     player_info_native = {k: (v.item() if isinstance(v, (integer, floating, generic)) else v)
                           for k, v in player_info.items()}
     return jsonify({"info": player_info_native}), 200
+
+@app.route("/api/metric_categories")
+def api_metric_categories():
+    """Get the metric categories structure."""
+    return jsonify({
+        "categories": CATEGORIES,
+        "key_metrics": KEY_METRICS
+    })
 
 @app.route("/api/player_prediction/<player_name>")
 def api_player_prediction(player_name):

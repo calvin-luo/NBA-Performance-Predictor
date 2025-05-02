@@ -34,6 +34,24 @@ const CHART_COLORS = {
     grayLight: 'rgba(108, 117, 125, 0.2)'
 };
 
+// Metric categories and key metrics
+let CATEGORIES = {
+    "fantasy":    ["THREES", "TWOS", "FTM", "REB", "AST", "BLK", "STL", "TOV"],
+    "volume":     ["MIN", "FGM", "FGA"],
+    "efficiency": ["FG_PCT", "TS_PCT", "TOV", "THREE_PCT"],
+};
+let KEY_METRICS = [];
+// Flatten and deduplicate metrics from all categories
+for (const category in CATEGORIES) {
+    CATEGORIES[category].forEach(metric => {
+        if (!KEY_METRICS.includes(metric)) {
+            KEY_METRICS.push(metric);
+        }
+    });
+}
+// Sort the metrics alphabetically
+KEY_METRICS.sort();
+
 // Global chart defaults
 if (typeof Chart !== 'undefined') {
     Chart.defaults.font.family = "'Roboto', 'Segoe UI', Arial, sans-serif";
@@ -58,6 +76,11 @@ $(document).ready(function() {
     // Load today's games if the container exists
     if ($('#today-games').length > 0) {
         loadTodayGames();
+    }
+    
+    // Load metric categories from API if needed
+    if (typeof CATEGORIES_LOADED === 'undefined' || !CATEGORIES_LOADED) {
+        loadMetricCategories();
     }
 });
 
@@ -160,6 +183,30 @@ function initMobileMenu() {
     });
 }
 
+/**
+ * Load metric categories from API
+ */
+function loadMetricCategories() {
+    $.ajax({
+        url: '/api/metric_categories',
+        method: 'GET',
+        dataType: 'json',
+        success: function(data) {
+            if (data.categories && data.key_metrics) {
+                CATEGORIES = data.categories;
+                KEY_METRICS = data.key_metrics;
+                window.CATEGORIES_LOADED = true;
+                
+                // Trigger an event that other code can listen for
+                $(document).trigger('metrics-loaded');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error loading metric categories:', error);
+        }
+    });
+}
+
 // ======= UI Helper Functions =======
 
 /**
@@ -222,6 +269,75 @@ function showAlert(message, type = 'info', container = '#alerts-container', dism
         setTimeout(() => {
             $('.alert').alert('close');
         }, 5000);
+    }
+}
+
+/**
+ * Render category tabs for metrics visualization
+ * @param {string} containerId - ID of container to render tabs in
+ * @param {function} onTabChange - Callback function when tab changes
+ */
+function renderCategoryTabs(containerId, onTabChange) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    // Create tabs HTML
+    let tabsHtml = `
+        <ul class="nav nav-tabs" id="${containerId}-tabs" role="tablist">
+    `;
+    
+    // Add a tab for each category
+    Object.keys(CATEGORIES).forEach((category, index) => {
+        const active = index === 0 ? 'active' : '';
+        const selected = index === 0 ? 'true' : 'false';
+        
+        // Format category name for display (capitalize first letter)
+        const displayName = category.charAt(0).toUpperCase() + category.slice(1);
+        
+        tabsHtml += `
+            <li class="nav-item" role="presentation">
+                <button class="nav-link ${active}" id="${containerId}-${category}-tab" 
+                    data-bs-toggle="tab" data-bs-target="#${containerId}-${category}" 
+                    type="button" role="tab" aria-controls="${category}" 
+                    aria-selected="${selected}" data-category="${category}">
+                    ${displayName}
+                </button>
+            </li>
+        `;
+    });
+    
+    tabsHtml += `</ul>`;
+    
+    // Create tab content HTML
+    tabsHtml += `
+        <div class="tab-content" id="${containerId}-tabContent">
+    `;
+    
+    // Add content for each category
+    Object.keys(CATEGORIES).forEach((category, index) => {
+        const active = index === 0 ? 'show active' : '';
+        
+        tabsHtml += `
+            <div class="tab-pane fade ${active}" id="${containerId}-${category}" 
+                role="tabpanel" aria-labelledby="${containerId}-${category}-tab">
+                <div class="p-3" id="${containerId}-${category}-content">
+                    <!-- Content will be loaded dynamically -->
+                </div>
+            </div>
+        `;
+    });
+    
+    tabsHtml += `</div>`;
+    
+    // Set the HTML to the container
+    container.innerHTML = tabsHtml;
+    
+    // Add event listener for tab changes
+    if (typeof onTabChange === 'function') {
+        $(`#${containerId}-tabs .nav-link`).on('shown.bs.tab', function (e) {
+            const category = $(e.target).data('category');
+            onTabChange(category);
+        });
     }
 }
 
@@ -537,6 +653,70 @@ function createBarChart(canvasId, labels, datasets, title = '') {
     return window[canvasId + 'Chart'];
 }
 
+/**
+ * Create a grouped bar chart for category metrics
+ * @param {string} canvasId - ID of canvas element
+ * @param {string} category - Category name
+ * @param {Array} datasets - Array of dataset objects with category metrics
+ * @param {string} title - Chart title
+ * @returns {Chart} Chart instance
+ */
+function createCategoryChart(canvasId, category, datasets, title = '') {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    
+    // Destroy existing chart if it exists
+    if (window[canvasId + 'Chart']) {
+        window[canvasId + 'Chart'].destroy();
+    }
+    
+    // Get metrics for this category
+    const metrics = CATEGORIES[category] || [];
+    
+    // Format labels for display
+    const labels = metrics.map(metric => getMetricLabel(metric));
+    
+    // Extract data for each dataset
+    const formattedDatasets = datasets.map(dataset => {
+        const data = metrics.map(metric => {
+            // Find the metric in the dataset
+            return dataset.data[metric] || 0;
+        });
+        
+        return {
+            label: dataset.label,
+            data: data,
+            backgroundColor: dataset.backgroundColor || CHART_COLORS.primary,
+            borderColor: dataset.borderColor || CHART_COLORS.primary,
+            borderWidth: 1
+        };
+    });
+    
+    // Create new chart
+    window[canvasId + 'Chart'] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: formattedDatasets
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: !!title,
+                    text: title || category.charAt(0).toUpperCase() + category.slice(1) + ' Metrics'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false
+                }
+            }
+        }
+    });
+    
+    return window[canvasId + 'Chart'];
+}
+
 // ======= Player Utility Functions =======
 
 /**
@@ -567,7 +747,19 @@ function getMetricLabel(metric) {
         'OFF_RATING': 'Offensive Rating',
         'DEF_RATING': 'Defensive Rating',
         'AST_TO_RATIO': 'Assist/TO Ratio',
-        'MINUTES_PLAYED': 'Minutes'
+        'MINUTES_PLAYED': 'Minutes',
+        'THREES': '3-Pointers',
+        'TWOS': '2-Pointers',
+        'FTM': 'Free Throws',
+        'REB': 'Rebounds',
+        'AST': 'Assists',
+        'BLK': 'Blocks',
+        'STL': 'Steals',
+        'TOV': 'Turnovers',
+        'MIN': 'Minutes',
+        'FGM': 'Field Goals Made',
+        'FGA': 'Field Goals Att.',
+        'THREE_PCT': '3PT %'
     };
     
     return labels[metric] || metric;
@@ -583,7 +775,7 @@ function formatMetricValue(value, metric) {
     if (value === undefined || value === null || isNaN(value)) return '-';
     
     // Format based on metric type
-    if (metric === 'FG_PCT' || metric === 'TS_PCT') {
+    if (metric === 'FG_PCT' || metric === 'TS_PCT' || metric === 'THREE_PCT') {
         // Percentage metrics
         return (value * 100).toFixed(1) + '%';
     } else if (metric === 'PTS_PER_MIN') {

@@ -721,13 +721,16 @@ class PlayerStatsCollector:
                 df['PTS'] / (2 * (df['FGA'] + 0.44 * df['FTA'])),
                 0
             )
+
+            # 3. Three Point Percentage (THREE_PCT)
+            df['THREE_PCT'] = np.where(df['FG3A'] > 0, df['FG3M'] / df['FG3A'], 0)
             
-            # 3. Points per Minute - simple calculation
+            # 4. Points per Minute - simple calculation
             df['PTS_PER_MIN'] = np.where(df['MINUTES_PLAYED'] > 0, df['PTS'] / df['MINUTES_PLAYED'], 0)
             
-            # 4. Plus/Minus already in the data as PLUS_MINUS
+            # 5. Plus/Minus already in the data as PLUS_MINUS
             
-            # 5. Possessions approximation - needed for some calculations
+            # 6. Possessions approximation - needed for some calculations
             df['POSS'] = df['FGA'] - df['OREB'] + df['TOV'] + 0.44 * df['FTA']
             
             # We now need to include official rates from player dashboard if available
@@ -842,6 +845,9 @@ class PlayerStatsCollector:
             
             # 8. Assist-to-Turnover Ratio - simple calculation
             df['AST_TO_RATIO'] = np.where(df['TOV'] > 0, df['AST'] / df['TOV'], df['AST'])
+
+            # 9. Add new field: Two Point Field Goals (TWOS)
+            df['TWOS'] = df['FGM'] - df['FG3M']
             
             return df
             
@@ -887,8 +893,14 @@ class PlayerStatsCollector:
                 'GAME_DATE', 'GAME_ID', 'OPPONENT',  # Identifiers
                 'FG_PCT', 'TS_PCT', 'PTS_PER_MIN',  # Efficiency metrics
                 'PLUS_MINUS', 'OFF_RATING', 'DEF_RATING', 'GAME_SCORE',  # Impact metrics
-                'USG_RATE', 'MINUTES_PLAYED', 'AST_TO_RATIO'  # Usage metrics
+                'USG_RATE', 'MINUTES_PLAYED', 'AST_TO_RATIO',  # Usage metrics
+                'FG3M', 'FG3A', 'FGM', 'FGA', 'FTM', 'REB', 'AST', 'BLK', 'STL', 'TOV', 'MIN',  # New fantasy metrics
+                'THREES', 'THREE_PCT', 'TWOS'  # Additional metrics (THREE_PCT was added in calculate_advanced_metrics)
             ]
+            
+            # Rename FG3M to THREES if it exists and THREES doesn't
+            if 'FG3M' in player_stats.columns and 'THREES' not in player_stats.columns:
+                player_stats['THREES'] = player_stats['FG3M']
             
             # Keep only columns that exist in the dataframe
             available_columns = [col for col in ts_columns if col in player_stats.columns]

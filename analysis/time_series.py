@@ -17,6 +17,14 @@ logger = logging.getLogger('analysis.time_series')
 # Suppress statsmodels warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='statsmodels')
 
+# Define categories and key metrics
+CATEGORIES = {
+    "fantasy":    ["THREES", "TWOS", "FTM", "REB", "AST", "BLK", "STL", "TOV"],
+    "volume":     ["MIN", "FGM", "FGA"],
+    "efficiency": ["FG_PCT", "TS_PCT", "TOV", "THREE_PCT"],
+}
+KEY_METRICS = sorted({m for v in CATEGORIES.values() for m in v})  # 14 unique metrics (TOV appears twice)
+
 
 class PlayerTimeSeriesAnalyzer:
     """
@@ -44,16 +52,8 @@ class PlayerTimeSeriesAnalyzer:
         self.fixed_order = (1, 1, 1)         # p, d, q (non-seasonal components)
         self.fixed_seasonal_order = (1, 0, 1, 5)  # P, D, Q, S (seasonal components)
         
-        # Key metrics to analyze
-        self.key_metrics = [
-            'PTS_PER_MIN',
-            'FG_PCT',
-            'TS_PCT',
-            'GAME_SCORE',
-            'PLUS_MINUS',
-            'OFF_RATING',
-            'DEF_RATING'
-        ]
+        # Key metrics to analyze - now using KEY_METRICS from constants
+        self.key_metrics = KEY_METRICS
         
         # Dictionary to track player averages for fallback predictions
         self.player_averages = {}
@@ -280,7 +280,7 @@ class PlayerTimeSeriesAnalyzer:
         time_series_dict = self.preprocess_time_series(player_stats)
         
         # Dictionary to store forecast results
-        forecasts = {}
+        forecast_dict = {}
         
         # Process each metric
         for metric in self.key_metrics:
@@ -298,7 +298,7 @@ class PlayerTimeSeriesAnalyzer:
                 if metric in player_averages:
                     avg_value = player_averages[metric]
                     
-                    forecasts[metric] = {
+                    forecast_dict[metric] = {
                         'forecast': avg_value,
                         'lower_bound': avg_value * 0.85,  # Simple confidence interval
                         'upper_bound': avg_value * 1.15,
@@ -325,7 +325,7 @@ class PlayerTimeSeriesAnalyzer:
                     upper_bound = confidence_intervals.iloc[0, 1]
                     
                     # Store forecast results
-                    forecasts[metric] = {
+                    forecast_dict[metric] = {
                         'forecast': forecast_value,
                         'lower_bound': lower_bound,
                         'upper_bound': upper_bound,
@@ -342,7 +342,7 @@ class PlayerTimeSeriesAnalyzer:
                     if metric in player_averages:
                         avg_value = player_averages[metric]
                         
-                        forecasts[metric] = {
+                        forecast_dict[metric] = {
                             'forecast': avg_value,
                             'lower_bound': avg_value * 0.85,
                             'upper_bound': avg_value * 1.15,
@@ -357,7 +357,7 @@ class PlayerTimeSeriesAnalyzer:
                 if metric in player_averages:
                     avg_value = player_averages[metric]
                     
-                    forecasts[metric] = {
+                    forecast_dict[metric] = {
                         'forecast': avg_value,
                         'lower_bound': avg_value * 0.85,
                         'upper_bound': avg_value * 1.15,
@@ -367,4 +367,5 @@ class PlayerTimeSeriesAnalyzer:
                     
                     logger.info(f"Using average for {player_name} {metric}: {avg_value:.3f}")
         
-        return forecasts
+        # Return the forecast dictionary directly for backward compatibility
+        return forecast_dict

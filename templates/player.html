@@ -79,9 +79,9 @@
         <div class="tab-content border border-top-0 rounded-bottom p-4" id="playerTabsContent">
             <!-- Performance Tab -->
             <div class="tab-pane fade show active" id="performance" role="tabpanel" aria-labelledby="performance-tab">
-                <div class="row">
+                <div class="row mb-4">
                     <div class="col-md-6">
-                        <h4>Key Metrics</h4>
+                        <h4>Overall Performance</h4>
                         <div class="card">
                             <div class="card-body">
                                 <canvas id="performanceRadarChart" width="400" height="300"></canvas>
@@ -94,6 +94,15 @@
                             <div class="card-body">
                                 <canvas id="recentPerformanceChart" width="400" height="300"></canvas>
                             </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-12">
+                        <h4>Metrics by Category</h4>
+                        <div id="metrics-category-tabs">
+                            <!-- Category tabs will be rendered here -->
                         </div>
                     </div>
                 </div>
@@ -117,9 +126,10 @@
                     </div>
                 </div>
                 
+                <!-- Prediction Categories Tabs -->
                 <div class="row">
-                    <div class="col-md-6">
-                        <div class="card mb-4">
+                    <div class="col-md-12">
+                        <div class="card">
                             <div class="card-body">
                                 <h5 class="card-title">Projected Stats</h5>
                                 <div class="table-responsive">
@@ -147,14 +157,6 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body">
-                                <h5 class="card-title">Forecast Confidence</h5>
-                                <canvas id="predictionRangeChart" width="400" height="300"></canvas>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
             
@@ -169,29 +171,14 @@
                             <button class="btn btn-sm btn-outline-primary" data-metric="TS_PCT">TS%</button>
                             <button class="btn btn-sm btn-outline-primary" data-metric="PLUS_MINUS">+/-</button>
                             <button class="btn btn-sm btn-outline-primary" data-metric="GAME_SCORE">Game Score</button>
+                            <!-- Fantasy metrics -->
+                            <button class="btn btn-sm btn-outline-primary" data-metric="THREES">3-Pointers</button>
+                            <button class="btn btn-sm btn-outline-primary" data-metric="REB">Rebounds</button>
+                            <button class="btn btn-sm btn-outline-primary" data-metric="AST">Assists</button>
                         </div>
                         <div class="card">
                             <div class="card-body">
                                 <canvas id="trendChart" width="800" height="400"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="row">
-                    <div class="col-md-6">
-                        <h4>Performance by Opponent</h4>
-                        <div class="card">
-                            <div class="card-body">
-                                <canvas id="opponentPerformanceChart" width="400" height="300"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <h4>Home vs. Away</h4>
-                        <div class="card">
-                            <div class="card-body">
-                                <canvas id="homeAwayChart" width="400" height="300"></canvas>
                             </div>
                         </div>
                     </div>
@@ -208,15 +195,17 @@
                                 <th>Game</th>
                                 <th>MIN</th>
                                 <th>FG%</th>
+                                <th>3PM</th>
+                                <th>REB</th>
+                                <th>AST</th>
                                 <th>PTS</th>
                                 <th>+/-</th>
-                                <th>GAME SCORE</th>
                             </tr>
                         </thead>
                         <tbody id="game-history">
                             <!-- Will be populated with game history data -->
                             <tr>
-                                <td colspan="7" class="text-center py-3">
+                                <td colspan="9" class="text-center py-3">
                                     <div class="spinner-border spinner-border-sm text-primary" role="status">
                                         <span class="visually-hidden">Loading...</span>
                                     </div>
@@ -243,7 +232,6 @@
     // Charts
     let performanceRadarChart;
     let recentPerformanceChart;
-    let predictionRangeChart;
     let trendChart;
     
     // NBA Teams for opponent selection
@@ -259,6 +247,20 @@
     ];
     
     $(document).ready(function() {
+        // Wait for metrics to load
+        $(document).on('metrics-loaded', function() {
+            // Initialize category tabs
+            renderCategoryTabs('metrics-category-tabs', updateCategoryChart);
+        });
+        
+        // Try to load metric categories if they haven't been loaded yet
+        if (typeof window.CATEGORIES_LOADED === 'undefined' || !window.CATEGORIES_LOADED) {
+            loadMetricCategories();
+        } else {
+            // If already loaded, trigger the event manually
+            $(document).trigger('metrics-loaded');
+        }
+        
         // Populate opponent dropdown
         populateOpponentDropdown();
         
@@ -310,6 +312,9 @@
             
             // Create trend chart
             createTrendChart();
+            
+            // Update category charts
+            updateAllCategoryCharts();
         }).fail(function() {
             alert('Error loading player stats. Please try again.');
         });
@@ -345,6 +350,7 @@
     function loadPlayerPrediction(opponent = '') {
         const endpoint = `/api/player_prediction/{{ player_name }}${opponent ? '?opponent=' + encodeURIComponent(opponent) : ''}`;
         
+        // Show loading state in prediction table
         $('#prediction-table').html(`
             <tr>
                 <td colspan="3" class="text-center py-3">
@@ -361,10 +367,8 @@
             
             // Update prediction table
             updatePredictionTable();
-            
-            // Create prediction range chart
-            createPredictionRangeChart();
         }).fail(function() {
+            // Show error in prediction table
             $('#prediction-table').html(`
                 <tr>
                     <td colspan="3" class="text-center text-danger py-3">
@@ -387,11 +391,11 @@
     // Update player overview with average stats
     function updatePlayerOverview() {
         // Calculate averages
-        const avgPtsPerMin = calculateAverage('PTS_PER_MIN');
-        const avgFgPct = calculateAverage('FG_PCT');
-        const avgTsPct = calculateAverage('TS_PCT');
-        const avgPlusMinus = calculateAverage('PLUS_MINUS');
-        const avgGameScore = calculateAverage('GAME_SCORE');
+        const avgPtsPerMin = calculateAverage(playerStats, 'PTS_PER_MIN');
+        const avgFgPct = calculateAverage(playerStats, 'FG_PCT');
+        const avgTsPct = calculateAverage(playerStats, 'TS_PCT');
+        const avgPlusMinus = calculateAverage(playerStats, 'PLUS_MINUS');
+        const avgGameScore = calculateAverage(playerStats, 'GAME_SCORE');
         
         // Update the UI
         $('#avg-points').text((avgPtsPerMin * 36).toFixed(1)); // Convert to points per 36 min
@@ -402,7 +406,7 @@
     }
     
     // Calculate average for a specific metric
-    function calculateAverage(metric) {
+    function calculateAverage(playerStats, metric) {
         if (!playerStats || playerStats.length === 0) return 0;
         
         const values = playerStats.map(game => parseFloat(game[metric])).filter(val => !isNaN(val));
@@ -414,11 +418,16 @@
         const ctx = document.getElementById('performanceRadarChart').getContext('2d');
         
         // Calculate percentile values for radar chart (0 to 100 scale)
-        const scoring = calculateAverage('PTS_PER_MIN') * 30; // Scale to reasonable range
-        const efficiency = calculateAverage('TS_PCT') * 100;
-        const impact = (calculateAverage('PLUS_MINUS') + 10) * 5; // Scale and normalize
-        const gameScore = calculateAverage('GAME_SCORE') * 4; // Scale to reasonable range
-        const assistToTo = Math.min(calculateAverage('AST_TO_RATIO') * 10, 100); // Cap at 100
+        const scoring = calculateAverage(playerStats, 'PTS_PER_MIN') * 30; // Scale to reasonable range
+        const efficiency = calculateAverage(playerStats, 'TS_PCT') * 100;
+        const impact = (calculateAverage(playerStats, 'PLUS_MINUS') + 10) * 5; // Scale and normalize
+        const gameScore = calculateAverage(playerStats, 'GAME_SCORE') * 4; // Scale to reasonable range
+        const assistToTo = Math.min(calculateAverage(playerStats, 'AST_TO_RATIO') * 10, 100); // Cap at 100
+        
+        // Fantasy metrics
+        const threes = Math.min(calculateAverage(playerStats, 'THREES') * 10, 100);
+        const rebounds = Math.min(calculateAverage(playerStats, 'REB') * 2, 100);
+        const assists = Math.min(calculateAverage(playerStats, 'AST') * 3, 100);
         
         if (performanceRadarChart) {
             performanceRadarChart.destroy();
@@ -427,10 +436,10 @@
         performanceRadarChart = new Chart(ctx, {
             type: 'radar',
             data: {
-                labels: ['Scoring', 'Efficiency', 'Impact', 'Game Score', 'Ast/TO'],
+                labels: ['Scoring', 'Efficiency', 'Impact', 'Game Score', 'Ast/TO', '3PT', 'REB', 'AST'],
                 datasets: [{
                     label: '{{ player_name }}',
-                    data: [scoring, efficiency, impact, gameScore, assistToTo],
+                    data: [scoring, efficiency, impact, gameScore, assistToTo, threes, rebounds, assists],
                     backgroundColor: 'rgba(54, 162, 235, 0.2)',
                     borderColor: 'rgb(54, 162, 235)',
                     pointBackgroundColor: 'rgb(54, 162, 235)',
@@ -516,7 +525,13 @@
             'FG_PCT': 'FG%',
             'TS_PCT': 'TS%',
             'PLUS_MINUS': 'Plus/Minus',
-            'GAME_SCORE': 'Game Score'
+            'GAME_SCORE': 'Game Score',
+            'THREES': '3-Pointers',
+            'REB': 'Rebounds',
+            'AST': 'Assists',
+            'STL': 'Steals',
+            'BLK': 'Blocks',
+            'TOV': 'Turnovers'
         };
         
         for (const [metric, label] of Object.entries(metricsToDisplay)) {
@@ -532,7 +547,7 @@
                     // Convert to points per 36 minutes
                     formattedForecast = (forecast * 36).toFixed(1);
                     formattedRange = `${(lower * 36).toFixed(1)} - ${(upper * 36).toFixed(1)}`;
-                } else if (metric === 'FG_PCT' || metric === 'TS_PCT') {
+                } else if (metric === 'FG_PCT' || metric === 'TS_PCT' || metric === 'THREE_PCT') {
                     // Convert to percentage
                     formattedForecast = (forecast * 100).toFixed(1) + '%';
                     formattedRange = `${(lower * 100).toFixed(1)}% - ${(upper * 100).toFixed(1)}%`;
@@ -563,92 +578,6 @@
         }
         
         $('#prediction-table').html(tableHtml);
-    }
-    
-    // Create prediction range chart
-    function createPredictionRangeChart() {
-        const ctx = document.getElementById('predictionRangeChart').getContext('2d');
-        
-        // Prepare data for chart
-        const labels = [];
-        const forecasts = [];
-        const lowerBounds = [];
-        const upperBounds = [];
-        
-        // Define metrics to display and their labels
-        const metricsToDisplay = {
-            'PTS_PER_MIN': 'Points (per 36)',
-            'FG_PCT': 'FG%',
-            'TS_PCT': 'TS%',
-            'PLUS_MINUS': 'Plus/Minus',
-            'GAME_SCORE': 'Game Score'
-        };
-        
-        for (const [metric, label] of Object.entries(metricsToDisplay)) {
-            if (playerPrediction[metric]) {
-                let forecast = playerPrediction[metric].forecast;
-                let lower = playerPrediction[metric].lower_bound;
-                let upper = playerPrediction[metric].upper_bound;
-                
-                // Scale points per minute to points per 36
-                if (metric === 'PTS_PER_MIN') {
-                    forecast *= 36;
-                    lower *= 36;
-                    upper *= 36;
-                }
-                
-                // Convert percentages to 0-100 scale
-                if (metric === 'FG_PCT' || metric === 'TS_PCT') {
-                    forecast *= 100;
-                    lower *= 100;
-                    upper *= 100;
-                }
-                
-                labels.push(label);
-                forecasts.push(forecast);
-                lowerBounds.push(lower);
-                upperBounds.push(upper);
-            }
-        }
-        
-        if (predictionRangeChart) {
-            predictionRangeChart.destroy();
-        }
-        
-        predictionRangeChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Forecast',
-                    data: forecasts,
-                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
-                    borderColor: 'rgb(54, 162, 235)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            afterLabel: function(context) {
-                                const index = context.dataIndex;
-                                return `Range: ${lowerBounds[index].toFixed(1)} - ${upperBounds[index].toFixed(1)}`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: false
-                    }
-                }
-            }
-        });
-        
-        // Add error bars manually using Chart.js annotation plugin
-        // Note: In production, you'd need to include the annotation plugin
     }
     
     // Create trend chart
@@ -726,7 +655,7 @@
             }
             
             // Convert percentages to 0-100 scale
-            if (metric === 'FG_PCT' || metric === 'TS_PCT') {
+            if (metric === 'FG_PCT' || metric === 'TS_PCT' || metric === 'THREE_PCT') {
                 value *= 100;
             }
             
@@ -736,17 +665,70 @@
         return { labels, values };
     }
     
-    // Get label for metric
-    function getMetricLabel(metric) {
-        const labels = {
-            'PTS_PER_MIN': 'Points',
-            'FG_PCT': 'Field Goal %',
-            'TS_PCT': 'True Shooting %',
-            'PLUS_MINUS': 'Plus/Minus',
-            'GAME_SCORE': 'Game Score'
-        };
+    // Update all category charts
+    function updateAllCategoryCharts() {
+        if (!playerStats || playerStats.length === 0) return;
         
-        return labels[metric] || metric;
+        // Update each category tab
+        Object.keys(CATEGORIES).forEach(category => {
+            updateCategoryChart(category);
+        });
+    }
+    
+    // Update single category chart
+    function updateCategoryChart(category) {
+        if (!playerStats || playerStats.length === 0) return;
+        
+        const containerSelector = `#metrics-category-tabs-${category}-content`;
+        const container = $(containerSelector);
+        
+        if (container.length === 0) return;
+        
+        // Create canvas if it doesn't exist
+        if (container.find('canvas').length === 0) {
+            container.html(`<canvas id="category-chart-${category}" width="800" height="400"></canvas>`);
+        }
+        
+        // Get metrics for this category
+        const metrics = CATEGORIES[category] || [];
+        
+        // Calculate averages for each metric
+        const averages = metrics.map(metric => calculateAverage(playerStats, metric));
+        
+        // Format labels for display
+        const labels = metrics.map(getMetricLabel);
+        
+        // Create or update chart
+        const canvasId = `category-chart-${category}`;
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        
+        const categoryChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '{{ player_name }}',
+                    data: averages,
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                    borderColor: 'rgb(54, 162, 235)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: category.charAt(0).toUpperCase() + category.slice(1) + ' Metrics'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
     }
     
     // Update game history table
@@ -754,7 +736,7 @@
         if (!playerStats || playerStats.length === 0) {
             $('#game-history').html(`
                 <tr>
-                    <td colspan="7" class="text-center text-muted py-3">
+                    <td colspan="9" class="text-center text-muted py-3">
                         No game history available
                     </td>
                 </tr>
@@ -785,9 +767,11 @@
                     <td>${opponent}</td>
                     <td>${game.MINUTES_PLAYED}</td>
                     <td>${(game.FG_PCT * 100).toFixed(1)}%</td>
+                    <td>${game.THREES || game.FG3M || 0}</td>
+                    <td>${game.REB || 0}</td>
+                    <td>${game.AST || 0}</td>
                     <td>${points}</td>
                     <td>${game.PLUS_MINUS}</td>
-                    <td>${game.GAME_SCORE.toFixed(1)}</td>
                 </tr>
             `;
         });
