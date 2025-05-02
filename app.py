@@ -1,4 +1,5 @@
 import logging
+import pytz
 logging.basicConfig(level=logging.INFO, format="%(asctime)s · %(levelname)s · %(name)s · %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,8 @@ def api_today_games():
     if cached is not None:
         return jsonify({"games": cached})
 
-    target_date = datetime.utcnow().strftime("%Y-%m-%d")
+    eastern = pytz.timezone("US/Eastern")
+    target_date = datetime.now(eastern).strftime("%Y-%m-%d")
     logger.info("Fetching games for %s", target_date)
 
     try:

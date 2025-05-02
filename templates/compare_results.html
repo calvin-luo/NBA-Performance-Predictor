@@ -568,12 +568,12 @@
         
         metrics.forEach(metric => {
             // Check if we have predictions for this metric for both players
-            const player1Has = player1Prediction.flat && player1Prediction.flat[metric.key];
-            const player2Has = player2Prediction.flat && player2Prediction.flat[metric.key];
+            const player1Has = player1Prediction && player1Prediction[metric.key];
+            const player2Has = player2Prediction && player2Prediction[metric.key];
             
             if (player1Has && player2Has) {
-                const player1Val = player1Prediction.flat[metric.key].forecast;
-                const player2Val = player2Prediction.flat[metric.key].forecast;
+                const player1Val = player1Prediction[metric.key].forecast;
+                const player2Val = player2Prediction[metric.key].forecast;
                 const diff = (player1Val - player2Val) * metric.multiplier;
                 
                 // Determine which player is better for this metric
