@@ -14,8 +14,12 @@ let volumeChart = null;
 let efficiencyChart = null;
 let recentGamesChart = null;
 
-const p1 = encodeURIComponent('{{ player1 }}');
-const p2 = encodeURIComponent('{{ player2 }}');
+const params = new URLSearchParams(window.location.search);
+const p1Raw = params.get('player1') ?? '';
+const p2Raw = params.get('player2') ?? '';
+const p1 = encodeURIComponent(p1Raw);
+const p2 = encodeURIComponent(p2Raw);
+
 
 // Define categories
 const CATEGORIES = {
@@ -221,7 +225,7 @@ function createRadarChart() {
             labels: ['Scoring', 'Efficiency', 'Impact', 'Game Score', 'Playmaking'],
             datasets: [
                 {
-                    label: '{{ player1 }}',
+                    label: p1Raw,
                     data: player1Data,
                     backgroundColor: 'rgba(54, 162, 235, 0.2)',
                     borderColor: 'rgb(54, 162, 235)',
@@ -231,7 +235,7 @@ function createRadarChart() {
                     pointHoverBorderColor: 'rgb(54, 162, 235)'
                 },
                 {
-                    label: '{{ player2 }}',
+                    label: p2Raw,
                     data: player2Data,
                     backgroundColor: 'rgba(255, 99, 132, 0.2)',
                     borderColor: 'rgb(255, 99, 132)',
@@ -301,14 +305,14 @@ function createCategoryChart(category, canvasId) {
             labels: labels,
             datasets: [
                 {
-                    label: '{{ player1 }}',
+                    label: p1Raw,
                     data: player1Avgs,
                     backgroundColor: 'rgba(54, 162, 235, 0.7)',
                     borderColor: 'rgb(54, 162, 235)',
                     borderWidth: 1
                 },
                 {
-                    label: '{{ player2 }}',
+                    label: p2Raw,
                     data: player2Avgs,
                     backgroundColor: 'rgba(255, 99, 132, 0.7)',
                     borderColor: 'rgb(255, 99, 132)',
@@ -424,14 +428,14 @@ function createRecentGamesChart() {
             labels: labels,
             datasets: [
                 {
-                    label: '{{ player1 }}',
+                    label: p1Raw,
                     data: player1Data,
                     borderColor: 'rgb(54, 162, 235)',
                     backgroundColor: 'rgba(54, 162, 235, 0.5)',
                     tension: 0.1
                 },
                 {
-                    label: '{{ player2 }}',
+                    label: p2Raw,
                     data: player2Data,
                     borderColor: 'rgb(255, 99, 132)',
                     backgroundColor: 'rgba(255, 99, 132, 0.5)',
