@@ -529,7 +529,9 @@ class PlayerStatsCollector:
                 'experience': info_df['SEASON_EXP'].iloc[0] if 'SEASON_EXP' in info_df.columns else None
             }
             
-            # Cache the result
+            
+            # Ensure all numpy scalar types are converted to native Python types for JSON serialization
+            player_data = {k: (v.item() if isinstance(v, (np.generic,)) else v) for k, v in player_data.items()}# Cache the result
             self.player_details_cache[player_name] = player_data
             
             logger.info(f"Successfully fetched info for {player_name}: {player_data['team_name']} ({player_data['position']})")

@@ -205,7 +205,11 @@ def api_player_info(player_name):
     if player_info is None:
         return jsonify({"error": f"No information found for {player_name}"}), 404
     
-    return jsonify(player_info), 200
+    # Cast any numpy scalar types to native Python before serializing
+    from numpy import generic, integer, floating
+    player_info_native = {k: (v.item() if isinstance(v, (integer, floating, generic)) else v)
+                          for k, v in player_info.items()}
+    return jsonify({"info": player_info_native}), 200
 
 @app.route("/api/player_prediction/<player_name>")
 def api_player_prediction(player_name):
