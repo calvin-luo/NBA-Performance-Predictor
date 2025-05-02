@@ -224,7 +224,13 @@ def api_metric_categories():
 @app.route("/api/player_prediction/<path:player_name>")
 def api_player_prediction(player_name):
     """Get player predictions based on time series analysis."""
-    # Get player stats
+    # Check cache first
+    cache_key = f"prediction_{player_name}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return jsonify({"prediction": cached})
+    
+    # Get player stats (these are already cached)
     stats_df = player_stats.get_player_stats(player_name)
     
     if stats_df is None or stats_df.empty:
@@ -233,8 +239,10 @@ def api_player_prediction(player_name):
     # Generate prediction
     forecast = series_analyzer.forecast_player_performance(player_name, stats_df)
     
+    # Cache the prediction for 1 hour
+    _cache_set(cache_key, forecast)
+    
     return jsonify({"prediction": forecast})
-
 
 @app.post("/api/lineup_projection")
 def api_lineup_projection():

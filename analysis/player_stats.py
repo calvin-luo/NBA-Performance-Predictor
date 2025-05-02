@@ -140,6 +140,7 @@ class PlayerStatsCollector:
         
         # Update last request timestamp
         self.last_request_time = time.time()
+        self.timeout = 10
     
     def _reset_delay(self):
         """Reset delay to initial value after a successful batch of requests."""

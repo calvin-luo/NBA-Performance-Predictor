@@ -20,14 +20,6 @@ const p2Raw = params.get('player2') ?? '';
 const p1 = encodeURIComponent(p1Raw);
 const p2 = encodeURIComponent(p2Raw);
 
-
-// Define categories
-const CATEGORIES = {
-    "fantasy": ["THREES", "TWOS", "FTM", "REB", "AST", "BLK", "STL", "TOV"],
-    "volume": ["MIN", "FGM", "FGA"],
-    "efficiency": ["FG_PCT", "TS_PCT", "TOV", "THREE_PCT"]
-};
-
 $(document).ready(function() {
     // Load player data
     loadPlayerData();
@@ -113,22 +105,25 @@ function updatePlayerTeamPosition(playerInfo, elementId) {
 
 // Load player predictions
 function loadPredictions() {
-    // Load player 1 prediction
-    $.getJSON(`/api/player_prediction/${p1}`, function(data) {
-        player1Prediction = data.prediction;
-        
-        // Load player 2 prediction
-        $.getJSON(`/api/player_prediction/${p2}`, function(data) {
-            player2Prediction = data.prediction;
+    const pred1 = $.getJSON(`/api/player_prediction/${p1}`);
+    const pred2 = $.getJSON(`/api/player_prediction/${p2}`);
+    
+    Promise.allSettled([pred1, pred2])
+        .then(([p1Result, p2Result]) => {
+            if (p1Result.status === 'fulfilled') 
+                player1Prediction = p1Result.value.prediction;
+            if (p2Result.status === 'fulfilled') 
+                player2Prediction = p2Result.value.prediction;
             
-            // Update the prediction table
-            updatePredictionTable();
-        }).fail(function() {
-            alert(`Error loading prediction for {{ player2 }}. Please try again.`);
+            // Update the prediction table if we have at least one prediction
+            if (player1Prediction || player2Prediction) {
+                updatePredictionTable();
+            } else {
+                $('#prediction-table').html(
+                    '<tr><td colspan="4" class="text-center text-danger">'+
+                    'Could not load predictions for either player.</td></tr>');
+            }
         });
-    }).fail(function() {
-        alert(`Error loading prediction for {{ player1 }}. Please try again.`);
-    });
 }
 
 // Calculate average for a specific metric
