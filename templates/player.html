@@ -289,7 +289,7 @@
     
     // Load player stats
     function loadPlayerStats(forceRefresh = false) {
-        const endpoint = `/api/player_stats/{{ player_name }}${forceRefresh ? '?refresh=true' : ''}`;
+        const endpoint = `/api/player_stats/${encodeURIComponent('{{ player_name }}')}${forceRefresh ? '?refresh=true' : ''}`;
         
         // Get player info first
         fetchPlayerInfo();
@@ -322,7 +322,7 @@
     
     // Fetch player information including team and position
     function fetchPlayerInfo() {
-        const endpoint = `/api/player_info/{{ player_name }}`;
+        const endpoint = `/api/player_info/${encodeURIComponent('{{ player_name }}')}`;
         
         $.getJSON(endpoint, function(data) {
             playerInfo = data.info;

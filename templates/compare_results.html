@@ -235,7 +235,10 @@
     let volumeChart = null;
     let efficiencyChart = null;
     let recentGamesChart = null;
-    
+
+    const p1 = encodeURIComponent('{{ player1 }}');
+    const p2 = encodeURIComponent('{{ player2 }}');
+
     // Define categories
     const CATEGORIES = {
         "fantasy": ["THREES", "TWOS", "FTM", "REB", "AST", "BLK", "STL", "TOV"],
@@ -258,39 +261,42 @@
     
     // Load player data
     function loadPlayerData() {
-        // Fetch player info for both players
-        fetchPlayerInfo('{{ player1 }}', '1');
-        fetchPlayerInfo('{{ player2 }}', '2');
-        
-        // Load player 1 stats
-        $.getJSON(`/api/player_stats/{{ player1 }}`, function(data) {
-            player1Stats = data.stats;
-            
-            // Load player 2 stats
-            $.getJSON(`/api/player_stats/{{ player2 }}`, function(data) {
-                player2Stats = data.stats;
-                
-                // Update the comparison table
-                updateKeyStatsTable();
-                
-                // Create radar chart
-                createRadarChart();
-                
-                // Create category charts
-                createCategoryCharts();
-                
-                // Create recent games chart
-                createRecentGamesChart();
-                
-                // Load predictions
-                loadPredictions();
-            }).fail(function() {
-                alert(`Error loading stats for {{ player2 }}. Please try again.`);
+        // 1️⃣ kick off all network calls in parallel
+        const info1 = $.getJSON(`/api/player_info/${p1}`);
+        const info2 = $.getJSON(`/api/player_info/${p2}`);
+        const stats1 = $.getJSON(`/api/player_stats/${p1}`);
+        const stats2 = $.getJSON(`/api/player_stats/${p2}`);
+
+        // 2️⃣ wait for *all* of them, even if one 404s
+        Promise.allSettled([info1, info2, stats1, stats2]).then(
+            ([i1, i2, s1, s2]) => {
+                /* — team / position panels — */
+                if (i1.status === 'fulfilled')
+                    updatePlayerTeamPosition(i1.value.info, 'player1-team-position');
+                else $('#player1-team-position').text('—');
+
+                if (i2.status === 'fulfilled')
+                    updatePlayerTeamPosition(i2.value.info, 'player2-team-position');
+                else $('#player2-team-position').text('—');
+
+                /* — stats & charts — */
+                if (s1.status === 'fulfilled') player1Stats = s1.value.stats;
+                if (s2.status === 'fulfilled') player2Stats = s2.value.stats;
+
+                if (player1Stats && player2Stats) {
+                    updateKeyStatsTable();
+                    createRadarChart();
+                    createCategoryCharts();
+                    createRecentGamesChart();
+                    loadPredictions();   // this uses the encoded names too
+                } else {
+                    $('#key-stats-table').html(
+                        '<tr><td colspan="4" class="text-center text-danger">'+
+                        'Stats unavailable for one or both players.</td></tr>');
+                }
             });
-        }).fail(function() {
-            alert(`Error loading stats for {{ player1 }}. Please try again.`);
-        });
     }
+
     
     // Fetch player information including team and position
     function fetchPlayerInfo(playerName, playerNum) {
@@ -326,11 +332,11 @@
     // Load player predictions
     function loadPredictions() {
         // Load player 1 prediction
-        $.getJSON(`/api/player_prediction/{{ player1 }}`, function(data) {
+        $.getJSON(`/api/player_prediction/${p1}`, function(data) {
             player1Prediction = data.prediction;
             
             // Load player 2 prediction
-            $.getJSON(`/api/player_prediction/{{ player2 }}`, function(data) {
+            $.getJSON(`/api/player_prediction/${p2}`, function(data) {
                 player2Prediction = data.prediction;
                 
                 // Update the prediction table

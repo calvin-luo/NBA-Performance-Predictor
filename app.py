@@ -172,7 +172,7 @@ def api_search_player():
     return jsonify(results[:10])  # Limit to 10 results
 
 
-@app.route("/api/player_stats/<player_name>")
+@app.route("/api/player_stats/<path:player_name>")
 def api_player_stats(player_name):
     """Get player stats for analysis and visualization."""
     refresh = request.args.get("refresh", "false").lower() == "true"
@@ -198,7 +198,7 @@ def api_player_stats(player_name):
     
     return jsonify({"stats": stats})
 
-@app.route("/api/player_info/<player_name>")
+@app.route("/api/player_info/<path:player_name>")
 def api_player_info(player_name):
     """Get player information including team and position."""
     # Get player info from collector
@@ -221,7 +221,7 @@ def api_metric_categories():
         "key_metrics": KEY_METRICS
     })
 
-@app.route("/api/player_prediction/<player_name>")
+@app.route("/api/player_prediction/<path:player_name>")
 def api_player_prediction(player_name):
     """Get player predictions based on time series analysis."""
     # Get player stats
